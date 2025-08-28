@@ -53,6 +53,12 @@
       applyTheme(next);
       updateButtonLabel(btn);
     });
+    // 例示URLの動的表示（任意）
+    const ex = document.getElementById("exampleUrl");
+    if (ex) {
+      const protoHost = `${location.protocol}//${location.host}`;
+      ex.textContent = `${protoHost}/bridge.html?action=clock_in&timestamp=2025-08-27T00:00:00.000Z&source=moneyforward`;
+    }
   });
 })();
 // API連携用のグローバル設定（必要に応じて有効化）

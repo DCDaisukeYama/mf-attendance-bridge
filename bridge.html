@@ -109,7 +109,7 @@
       <hr style="border:0;border-top:1px solid var(--line);margin:12px 0" /> <!-- 区切り線 -->
       <!-- URL例表示エリア -->
       <div class="small muted">URL例：
-        <code>chrome-extension://&lt;拡張ID&gt;/bridge.html?action=clock_in&timestamp=2025-08-27T00:00:00.000Z&source=moneyforward</code>
+        <code id="exampleUrl"></code>
       </div>
     </div>
 
@@ -123,14 +123,16 @@
 
       <table class="logtable">
         <colgroup>
-          <col style="width:56px" />
-          <col style="width:84px" />
-          <col style="width:260px" />
-          <col style="width:120px" />
-          <col style="width:260px" />
-          <col style="width:70px" />
+          <col style="width:48px" />
+          <col style="width:72px" />
+          <col style="width:240px" />
+          <col style="width:110px" />
           <col style="width:140px" />
-          <col style="width:140px" />
+          <col style="width:160px" />
+          <col style="width:200px" />
+          <col style="width:64px" />
+          <col style="width:130px" />
+          <col style="width:130px" />
         </colgroup>
         <thead>
           <tr>
@@ -138,6 +140,8 @@
             <th>種別</th>
             <th>日時（JST / UTC）</th>
             <th>source</th>
+            <th>team</th>
+            <th>project</th>
             <th>page</th>
             <th>ref</th>
             <th>労働時間（正確）</th>
