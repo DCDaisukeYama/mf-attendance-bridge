@@ -1,0 +1,126 @@
+<!doctype html>
+<!-- ===== bridge.html ===== -->
+<!-- 勤怠データを受け取るブリッジページ -->
+<!-- background.jsからのURLパラメータで勤怠情報を受け取り、ローカル保存と表示を行う -->
+<html lang="ja" data-theme="dark">
+<head>
+  <meta charset="utf-8" /> <!-- 文字エンコーディングをUTF-8に指定 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" /> <!-- レスポンシブデザイン用 -->
+  <title>勤怠記録ブリッジ & ログ確認</title> <!-- ページタイトル -->
+  <link rel="preconnect" href="." /> <!-- パフォーマンス最適化用 -->
+  <!-- ブリッジページ用のCSSスタイル（ダーク/ライトテーマ対応） -->
+  <style>
+    /* ===== THEME TOKENS ===== */
+    /* ダークモードのカラー定義 */
+    :root{
+      --bg1:#0b1020; --bg2:#0d1428; --card:#121a2f; --muted:#8aa0c7; --text:#e8eefc;
+      --ok:#17c964; --warn:#f5a524; --err:#f31260; --line:#203055;
+      --btn-bg:#0f1730; --th-bg:#0f1730; --code-bg:#0f1730; --row-hover:#0e1630;
+      --link:#9fc3ff;
+    }
+    /* ライトモードのカラー定義 */
+    :root[data-theme="light"]{
+      --bg1:#f7f9fc; --bg2:#eef3fb; --card:#ffffff; --muted:#5d6b85; --text:#0b1220;
+      --ok:#0f9953; --warn:#c27c17; --err:#cc1e4a; --line:#d9e2f1;
+      --btn-bg:#f0f3fa; --th-bg:#f0f3fa; --code-bg:#eff3fa; --row-hover:#f6f9ff;
+      --link:#1b66d1;
+    }
+
+    /* ベーススタイル - ボックスモデルとフォント設定 */
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,"Noto Sans JP",sans-serif;background:linear-gradient(180deg,var(--bg1),var(--bg1) 80%,var(--bg2));color:var(--text)}
+    .wrap{max-width:1080px;margin:32px auto;padding:0 16px}
+    h1{font-size:24px;margin:0 0 12px}
+    .muted{color:var(--muted)}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.15);}
+    .grid{display:grid;gap:16px}
+    @media(min-width:900px){.grid-2{grid-template-columns:1.2fr .8fr}}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .btn{appearance:none;border:1px solid var(--line);background:var(--btn-bg);color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer}
+    .btn:hover{filter:brightness(1.06)}
+    .btn.warn{border-color:rgba(245,165,36,.4)}
+    .stat{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line)}
+    .dot{width:10px;height:10px;border-radius:50%}
+    .okdot{background:var(--ok)} .warndot{background:var(--warn)} .errdot{background:var(--err)}
+    code,kbd{background:var(--code-bg);border:1px solid var(--line);padding:.2em .5em;border-radius:8px}
+    table{width:100%;border-collapse:collapse;border:1px solid var(--line);}
+    th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+    th{background:var(--th-bg);text-align:left;color:var(--muted);position:sticky;top:0}
+    tbody tr:hover{background:var(--row-hover)}
+    .badge{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);}
+    .in{color:#0bd68a;background:rgba(11,214,138,.12);border-color:rgba(11,214,138,.4)}
+    .out{color:#ffae33;background:rgba(255,174,51,.12);border-color:rgba(255,174,51,.4)}
+    a{color:var(--link)}
+    .small{font-size:12px}
+    .right{display:flex;justify-content:flex-end}
+    .kbd{font-variant-ligatures: no-common-ligatures;}
+    .header-actions{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px}
+  </style>
+</head>
+<body>
+  <!-- メインコンテナ - 2カラムレイアウト -->
+  <div class="wrap grid grid-2">
+    <!-- 左カラム: メイン情報カード -->
+    <div class="card">
+      <!-- ヘッダーエリア（タイトルとテーマ切替ボタン） -->
+      <div class="header-actions">
+        <h1>勤怠記録ブリッジ</h1> <!-- メインタイトル -->
+        <button id="themeToggle" class="btn" title="ライト/ダーク切替">🌗 テーマ切替</button> <!-- テーマ切替ボタン -->
+      </div>
+      <!-- ページ説明テキスト -->
+      <p class="muted">このページは拡張機能から <code class="kbd">?action=&timestamp=</code> を受け取り、
+        <b>ローカル保存</b>（任意でAPI連携）と<b>記録確認</b>を行います。</p>
+
+      <!-- 現在の勤怠イベントのステータス表示 -->
+      <div id="status" style="margin:12px 0 16px"></div>
+      <!-- アクションボタン行 -->
+      <div class="row">
+        <button id="btnExport" class="btn">CSVエクスポート</button> <!-- CSVエクスポートボタン -->
+        <button id="btnClear" class="btn warn">ログを全消去</button> <!-- ログ全消去ボタン -->
+        <span id="apiStatus" class="muted small" style="margin-left:auto"></span> <!-- API送信結果表示 -->
+      </div>
+    </div>
+
+    <!-- 右カラム: 最新記録表示カード -->
+    <div class="card">
+      <h2 style="margin:0 0 8px">直近の記録</h2> <!-- 最新記録セクションタイトル -->
+      <div id="latest" class="muted">読み込み中...</div> <!-- 最新記録の表示エリア -->
+      <hr style="border:0;border-top:1px solid var(--line);margin:12px 0" /> <!-- 区切り線 -->
+      <!-- URL例表示エリア -->
+      <div class="small muted">URL例：
+        <code>chrome-extension://&lt;拡張ID&gt;/bridge.html?action=clock_in&timestamp=2025-08-27T00:00:00.000Z&source=moneyforward</code>
+      </div>
+    </div>
+
+    <!-- フル幅カード: 勤怠ログ一覧テーブル -->
+    <div class="card" style="grid-column:1/-1">
+      <!-- テーブルヘッダー -->
+      <div class="row" style="justify-content:space-between;align-items:baseline">
+        <h2 style="margin:0">ログ一覧</h2> <!-- ログセクションタイトル -->
+        <div class="muted small">保存先：<code>localStorage.attendanceLogs</code></div> <!-- データ保存場所の表示 -->
+      </div>
+      <!-- スクロール可能なテーブルコンテナ -->
+      <div style="overflow:auto;max-height:60vh;margin-top:8px;border:1px solid var(--line);border-radius:12px">
+        <!-- 勤怠ログ一覧テーブル -->
+        <table>
+          <!-- テーブルヘッダー -->
+          <thead>
+            <tr>
+              <th style="width:80px">#</th> <!-- 連番 -->
+              <th style="width:100px">種別</th> <!-- 出勤/退勤の種別 -->
+              <th style="min-width:280px">日時（JST / UTC）</th> <!-- 日時情報 -->
+              <th style="min-width:120px">source</th> <!-- イベントの発生元 -->
+              <th style="min-width:200px">page</th> <!-- ページタイトル -->
+              <th style="min-width:120px">ref</th> <!-- 参照URL -->
+            </tr>
+          </thead>
+          <!-- テーブルボディ（JavaScriptで動的生成） -->
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <!-- ブリッジページの動作用JavaScript読み込み -->
+  <script src="bridge.js" defer></script>
+</body>
+</html>
