@@ -28,11 +28,19 @@
 
     /* ベーススタイル - ボックスモデルとフォント設定 */
     *{box-sizing:border-box}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,"Noto Sans JP",sans-serif;background:linear-gradient(180deg,var(--bg1),var(--bg1) 80%,var(--bg2));color:var(--text)}
-    .wrap{max-width:1080px;margin:32px auto;padding:0 16px}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,"Noto Sans JP",sans-serif;
+      background:linear-gradient(180deg,var(--bg1),var(--bg1) 80%,var(--bg2));
+      color:var(--text)
+    }
+    .wrap{max-width:1200px;margin:24px auto;padding:0 16px;overflow-x:hidden}
     h1{font-size:24px;margin:0 0 12px}
     .muted{color:var(--muted)}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.15);}
+    .card{
+      background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;
+      box-shadow:0 8px 24px rgba(0,0,0,.15); overflow:hidden; /* 子要素のはみ出し抑止 */
+    }
     .grid{display:grid;gap:16px}
     @media(min-width:900px){.grid-2{grid-template-columns:1.2fr .8fr}}
     .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
@@ -42,19 +50,31 @@
     .stat{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line)}
     .dot{width:10px;height:10px;border-radius:50%}
     .okdot{background:var(--ok)} .warndot{background:var(--warn)} .errdot{background:var(--err)}
-    code,kbd{background:var(--code-bg);border:1px solid var(--line);padding:.2em .5em;border-radius:8px}
-    table{width:100%;border-collapse:collapse;border:1px solid var(--line);}
-    th,td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-    th{background:var(--th-bg);text-align:left;color:var(--muted);position:sticky;top:0}
+
+    code,kbd{
+      background:var(--code-bg);border:1px solid var(--line);padding:.2em .5em;border-radius:8px;
+      word-break:break-all; overflow-wrap:anywhere; white-space:pre-wrap; /* 長いURLで横スクロールさせない */
+    }
+
+    /* ==== テーブル：横スクロールなし・基本1行省略 ==== */
+    table.logtable{width:100%;border-collapse:collapse;border:1px solid var(--line);table-layout:fixed}
+    table.logtable th, table.logtable td{
+      padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+    }
+    table.logtable th{background:var(--th-bg);text-align:left;color:var(--muted)}
     tbody tr:hover{background:var(--row-hover)}
     .badge{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);}
     .in{color:#0bd68a;background:rgba(11,214,138,.12);border-color:rgba(11,214,138,.4)}
     .out{color:#ffae33;background:rgba(255,174,51,.12);border-color:rgba(255,174,51,.4)}
     a{color:var(--link)}
     .small{font-size:12px}
-    .right{display:flex;justify-content:flex-end}
     .kbd{font-variant-ligatures: no-common-ligatures;}
     .header-actions{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px}
+    .right{display:flex;justify-content:flex-end}
+    /* 日時セルだけ2行許可（JST + UTC） */
+    .logtable td .dt{display:block;white-space:normal;line-height:1.25}
+    .logtable td .utc{display:block;color:var(--muted);font-size:12px;margin-top:2px}
   </style>
 </head>
 <body>
@@ -85,6 +105,7 @@
     <div class="card">
       <h2 style="margin:0 0 8px">直近の記録</h2> <!-- 最新記録セクションタイトル -->
       <div id="latest" class="muted">読み込み中...</div> <!-- 最新記録の表示エリア -->
+      <div id="totals" class="small" style="margin-top:12px"></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:12px 0" /> <!-- 区切り線 -->
       <!-- URL例表示エリア -->
       <div class="small muted">URL例：
@@ -99,25 +120,32 @@
         <h2 style="margin:0">ログ一覧</h2> <!-- ログセクションタイトル -->
         <div class="muted small">保存先：<code>localStorage.attendanceLogs</code></div> <!-- データ保存場所の表示 -->
       </div>
-      <!-- スクロール可能なテーブルコンテナ -->
-      <div style="overflow:auto;max-height:60vh;margin-top:8px;border:1px solid var(--line);border-radius:12px">
-        <!-- 勤怠ログ一覧テーブル -->
-        <table>
-          <!-- テーブルヘッダー -->
-          <thead>
-            <tr>
-              <th style="width:80px">#</th> <!-- 連番 -->
-              <th style="width:100px">種別</th> <!-- 出勤/退勤の種別 -->
-              <th style="min-width:280px">日時（JST / UTC）</th> <!-- 日時情報 -->
-              <th style="min-width:120px">source</th> <!-- イベントの発生元 -->
-              <th style="min-width:200px">page</th> <!-- ページタイトル -->
-              <th style="min-width:120px">ref</th> <!-- 参照URL -->
-            </tr>
-          </thead>
-          <!-- テーブルボディ（JavaScriptで動的生成） -->
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
+
+      <table class="logtable">
+        <colgroup>
+          <col style="width:56px" />
+          <col style="width:84px" />
+          <col style="width:260px" />
+          <col style="width:120px" />
+          <col style="width:260px" />
+          <col style="width:70px" />
+          <col style="width:140px" />
+          <col style="width:140px" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>種別</th>
+            <th>日時（JST / UTC）</th>
+            <th>source</th>
+            <th>page</th>
+            <th>ref</th>
+            <th>労働時間（正確）</th>
+            <th>労働時間（0.25h刻み）</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
     </div>
   </div>
   <!-- ブリッジページの動作用JavaScript読み込み -->
