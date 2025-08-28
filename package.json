@@ -1,0 +1,17 @@
+{
+  "name": "mf-attendance-bridge",
+  "version": "1.0.0",
+  "description": "",
+  "main": "background.js",
+"private": true,
+  "type": "module",
+  "scripts": {
+    "icons": "node fetch-icons.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "sharp": "^0.34.3"
+  }
+}
