@@ -15,6 +15,7 @@ const SVG_URL = `https://fonts.gstatic.com/s/i/short-term/release/materialsymbol
 const OUT_DIR = path.join(process.cwd(), "icons");
 const OUTS = [
   { name: "icon16.png", size: 16 },
+  { name: "icon32.png", size: 32 },
   { name: "icon48.png", size: 48 },
   { name: "icon128.png", size: 128 },
 ];
