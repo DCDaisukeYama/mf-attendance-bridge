@@ -1,8 +1,7 @@
-// Chrome拡張のバックグラウンドスクリプト（サービスワーカー）
-// content.jsからのメッセージを受け取り、設定に基づいて勤怠データを処理する
+// ===== background.js =====
 // Brave/Vivaldi/Opera/Chrome => chrome-extension://
-// Microsoft Edge             => extension://
-// （必要なら extUrlScheme を storage に入れて強制上書き可: "chrome-extension" | "extension"）
+// Microsoft Edge => extension://
+
 function detectBrowserBrand() {
   const ua = (navigator && navigator.userAgent) || "";
   if (/Edg\//.test(ua)) return "edge";
@@ -31,12 +30,14 @@ function buildExtensionUrl(path, schemeOverride) {
   const scheme = schemeOverride || defaultSchemeForBrand(brand);
   return `${scheme}://${id}/${String(path).replace(/^\//, "")}`;
 }
+
 function normalizeExtensionScheme(urlStr, schemeOverride) {
   try {
     const u = new URL(urlStr);
     const isExt =
       u.protocol === "chrome-extension:" || u.protocol === "extension:";
     if (!isExt) return urlStr;
+
     const brand = detectBrowserBrand();
     const should = (schemeOverride || defaultSchemeForBrand(brand)) + ":";
     if (u.protocol !== should) {
@@ -49,7 +50,7 @@ function normalizeExtensionScheme(urlStr, schemeOverride) {
   }
 }
 
-// 設定で管理する静的キー一覧
+// ===== Settings =====
 const STATIC_KEYS = [
   "targetPageUrl",
   "enableDirectPost",
@@ -65,9 +66,18 @@ const STATIC_KEYS = [
   "debounceMs",
   "debug",
   "extUrlScheme",
+  // ---- Spreadsheet mode ----
+  "sheetMode", // true/false
+  "sheetWebAppUrl", // GAS Web アプリ URL（/exec）
+  "spreadsheetId", // シートID（URLから抽出でも可）
+  "spreadsheetUrl", // 入力URL（ID抽出用の後方互換）
+  "sheetHeaders", // B1..R1 の見出し配列（抽出済みを保存）
+  "sheetHeaderStartCol", // 既定 "B"
+  "sheetNameFormat", // 既定 "YYYY年M月"
+  "ssHeaderCache", // { "YYYY年M月": ["PJ1","PJ2",...] }
+  "ssTeam", // チーム名
 ];
 
-// 動的既定値（拡張IDに依存するURLなどを含む）
 async function getDynamicDefaults() {
   const forced = await readForcedScheme();
   const bridgeUrl = buildExtensionUrl("bridge.html", forced);
@@ -100,6 +110,16 @@ async function getDynamicDefaults() {
     debounceMs: 1200,
     debug: true,
     extUrlScheme: forced || null,
+    // Spreadsheet mode defaults
+    sheetMode: false,
+    sheetWebAppUrl: "",
+    spreadsheetId: "",
+    spreadsheetUrl: "",
+    sheetHeaders: [], // ex: ["PJ-A","PJ-B",...]
+    sheetHeaderStartCol: "B",
+    sheetNameFormat: "YYYY年M月",
+    ssHeaderCache: {},
+    ssTeam: "所属チーム",
   };
 }
 
@@ -112,11 +132,39 @@ async function loadSettings() {
   const saved = await chrome.storage.sync.get(STATIC_KEYS);
   const forced = saved.extUrlScheme || dynamic.extUrlScheme || null;
   const merged = { ...dynamic, ...saved };
+
+  // spreadsheetId が空なら URL から抽出試行
+  if (!merged.spreadsheetId && merged.spreadsheetUrl) {
+    const m = String(merged.spreadsheetUrl).match(
+      /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/
+    );
+    if (m) merged.spreadsheetId = m[1];
+  }
+
+  // sheetHeaders が空で ssHeaderCache がある場合は復元
+  if (!merged.sheetHeaders?.length && merged.ssHeaderCache) {
+    const currentMonth = monthSheetNameByFormat(
+      merged.sheetNameFormat || "YYYY年M月",
+      new Date().toISOString()
+    );
+    merged.sheetHeaders = merged.ssHeaderCache[currentMonth] || [];
+  }
+
   merged.targetPageUrl = normalizeExtensionScheme(merged.targetPageUrl, forced);
   settings = merged;
+
+  // デバッグ用：設定を出力
+  log("Settings loaded:", {
+    sheetMode: settings.sheetMode,
+    sheetWebAppUrl: settings.sheetWebAppUrl,
+    sheetToken: settings.sheetToken ? "***set***" : "***not set***",
+    spreadsheetId: settings.spreadsheetId,
+    spreadsheetUrl: settings.spreadsheetUrl,
+    sheetHeaders: settings.sheetHeaders,
+    ssHeaderCache: Object.keys(settings.ssHeaderCache || {}),
+  });
 }
 
-// 初回インストール時などに、未設定の項目に既定値をセットする
 async function seedDefaultsIfMissing() {
   const dynamic = await getDynamicDefaults();
   const saved = await chrome.storage.sync.get(STATIC_KEYS);
@@ -183,15 +231,296 @@ async function openBridgeTab(payload) {
   }
 }
 
-// content.jsからのメッセージを処理するメインハンドラー
-// 勤怠イベント（出勤/退勤）を受け取り、設定に応じて処理を分岐
+// ===== Helpers for Spreadsheet mode =====
+const JST_OFFSET = 9 * 3600 * 1000;
+
+function jstParts(iso) {
+  const t = new Date(iso).getTime() + JST_OFFSET;
+  const d = new Date(t);
+  return {
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1, // 1-12
+    day: d.getUTCDate(), // 1-31
+  };
+}
+
+function monthSheetNameByFormat(fmt, iso) {
+  const { year, month } = jstParts(iso);
+  if (fmt === "YYYY年M月") return `${year}年${month}月`;
+  // 追加パターンを増やしたければここに
+  return `${year}年${month}月`;
+}
+
+function rowIndexForDay(day) {
+  return 1 + day; /* A2=1日 → 行=day+1 */
+}
+
+function a1ColFromNumber(n) {
+  // 1->A, 2->B
+  let s = "";
+  while (n > 0) {
+    n--;
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26);
+  }
+  return s;
+}
+
+function colNumberFromLetter(letter) {
+  // "A"->1, "B"->2
+  let n = 0;
+  for (const ch of letter.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
+}
+
+function quarterHoursDecimal(ms) {
+  const q = Math.round(ms / (15 * 60 * 1000)); // 15分単位
+  return q / 4; // 0.25刻みの小数（2.25 など）
+}
+
+// 現在選択中のチーム/プロジェクト名を取得（popup の保存情報から）
+async function getActiveTeamProjectNames() {
+  const { teams, activeTeamId, activeProjectId } =
+    await chrome.storage.sync.get(["teams", "activeTeamId", "activeProjectId"]);
+  const team =
+    (teams || []).find((t) => t.id === activeTeamId) || (teams || [])[0];
+  const project =
+    team?.projects?.find((p) => p.id === activeProjectId) ||
+    team?.projects?.[0];
+  return { teamName: team?.name || "", projectName: project?.name || "" };
+}
+
+// B1:R1 を CSV でライブ取得（拡張の host_permissions は manifest に既に追加済み）
+async function fetchHeadersBR1(spreadsheetId, sheetName, startCol) {
+  const range = `${startCol || "B"}1:R1`;
+  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
+    sheetName
+  )}&range=${range}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`header fetch HTTP ${res.status}`);
+  const text = (await res.text()).trim();
+  return text
+    .split(",")
+    .map((s) => s.replace(/^"|"$/g, "").trim())
+    .filter(Boolean);
+}
+
+// 1) settings.sheetHeaders → 2) ssHeaderCache[当月] → 3) ライブ取得（成功したら保存）
+async function getHeadersForMonth(sheetName, spreadsheetId) {
+  let headers =
+    (settings.sheetHeaders && settings.sheetHeaders.length
+      ? settings.sheetHeaders
+      : []) || [];
+  if (
+    !headers.length &&
+    settings.ssHeaderCache &&
+    settings.ssHeaderCache[sheetName]
+  ) {
+    headers = settings.ssHeaderCache[sheetName] || [];
+  }
+  if (!headers.length && spreadsheetId) {
+    try {
+      headers = await fetchHeadersBR1(
+        spreadsheetId,
+        sheetName,
+        settings.sheetHeaderStartCol || "B"
+      );
+      const cache = { ...(settings.ssHeaderCache || {}) };
+      cache[sheetName] = headers;
+      await chrome.storage.sync.set({
+        ssHeaderCache: cache,
+        sheetHeaders: headers,
+      });
+      settings.ssHeaderCache = cache;
+      settings.sheetHeaders = headers;
+    } catch (e) {
+      log("header live fetch failed:", e);
+    }
+  }
+  return headers;
+}
+
+// WebアプリURLからトークンを抽出
+function extractTokenFromWebAppUrl(webAppUrl) {
+  if (!webAppUrl) return "";
+  const match = String(webAppUrl).match(/\/macros\/s\/([^\/]+)/);
+  return match ? match[1] : "";
+}
+
+// B1..R1 の配列と開始列から、ヘッダ名→列記号を求める
+function resolveColumnLetter(headers, headerStartCol, headerName) {
+  const start = colNumberFromLetter(headerStartCol || "B"); // 既定B=2
+  const idx = (headers || []).indexOf(headerName);
+  if (idx < 0) return null;
+  return a1ColFromNumber(start + idx);
+}
+
+async function postToGAS({ endIso, projectName, valueDecimal }) {
+  log("postToGAS called with:", { endIso, projectName, valueDecimal });
+
+  if (!settings.sheetMode) {
+    log("Sheet mode is disabled");
+    return { ok: false, reason: "sheetMode off" };
+  }
+
+  if (
+    !settings.sheetWebAppUrl ||
+    (!settings.spreadsheetId && !settings.spreadsheetUrl)
+  ) {
+    log("Missing webAppUrl or spreadsheetId:", {
+      webAppUrl: settings.sheetWebAppUrl,
+      spreadsheetId: settings.spreadsheetId,
+      spreadsheetUrl: settings.spreadsheetUrl,
+    });
+    return { ok: false, reason: "missing webAppUrl or spreadsheetId" };
+  }
+
+  // シート名・行
+  const sheetName = monthSheetNameByFormat(settings.sheetNameFormat, endIso);
+  const { day } = jstParts(endIso);
+  const row = rowIndexForDay(day);
+
+  log("Sheet details:", { sheetName, day, row });
+
+  // SpreadSheet ID（URL→ID抽出の後方互換）
+  let spreadsheetId = settings.spreadsheetId;
+  if (!spreadsheetId && settings.spreadsheetUrl) {
+    const m = String(settings.spreadsheetUrl).match(
+      /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/
+    );
+    spreadsheetId = m ? m[1] : "";
+  }
+  if (!spreadsheetId) {
+    log("spreadsheetId empty");
+    return { ok: false, reason: "spreadsheetId empty" };
+  }
+
+  // ---- ヘッダーを必ず用意する（sheetHeaders → ssHeaderCache → ライブ取得）----
+  const headers = await getHeadersForMonth(sheetName, spreadsheetId);
+  log("Resolved headers:", headers);
+
+  const letter = resolveColumnLetter(
+    headers,
+    settings.sheetHeaderStartCol || "B",
+    projectName
+  );
+  if (!letter) {
+    log(`Header not found for project: ${projectName}`);
+    return { ok: false, reason: `header not found for project=${projectName}` };
+  }
+
+  // WebアプリURLからトークンを抽出
+  const token = extractTokenFromWebAppUrl(settings.sheetWebAppUrl);
+
+  const body = {
+    token: token,
+    spreadsheetId,
+    sheetName,
+    row,
+    values: [{ col: letter, value: valueDecimal }],
+  };
+
+  log("Sending to GAS:", body);
+
+  try {
+    const res = await fetch(settings.sheetWebAppUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      keepalive: true,
+    });
+
+    log("GAS response status:", res.status);
+
+    const responseText = await res.text();
+    log("GAS response text:", responseText);
+
+    const json = responseText ? JSON.parse(responseText) : {};
+    const result = { ok: !!json.ok, status: res.status, json };
+
+    log("Final result:", result);
+    return result;
+  } catch (e) {
+    log("GAS request error:", e);
+    return { ok: false, error: String(e) };
+  }
+}
+
+// セグメント(出勤中の区間)の保存場所は local に
+const SEG_KEY = "activeSegment";
+
+async function getSeg() {
+  try {
+    const r = await chrome.storage.local.get([SEG_KEY]);
+    return r[SEG_KEY] || null;
+  } catch {
+    return null;
+  }
+}
+
+async function setSeg(seg) {
+  await chrome.storage.local.set({ [SEG_KEY]: seg });
+}
+
+async function clearSeg() {
+  await chrome.storage.local.remove([SEG_KEY]);
+}
+
+// 区間を確定して GAS に書く
+async function finalizeSegment(endIso, prevSeg) {
+  if (!prevSeg?.start || !prevSeg.project)
+    return { ok: false, reason: "no previous seg" };
+
+  const ms = new Date(endIso) - new Date(prevSeg.start);
+  if (!(ms > 0)) return { ok: false, reason: "invalid ms" };
+
+  const val = quarterHoursDecimal(ms);
+  const res = await postToGAS({
+    endIso,
+    projectName: prevSeg.project,
+    valueDecimal: val,
+  });
+
+  log("GAS write:", { project: prevSeg.project, endIso, val, res });
+  return res;
+}
+
+// ===== Message handler =====
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type !== "MF_BRIDGE_EVENT") return;
+
   (async () => {
     await loadSettings();
-    const { action, timestamp, pageUrl, pageTitle } = msg.payload || {};
-    const payload = { action, timestamp, pageUrl, pageTitle };
 
+    const { action, timestamp, pageUrl, pageTitle } = msg.payload || {};
+
+    // team/project を補完（popup の project_switch には既に入っているが、clock_in/out には無い）
+    let team = msg.payload?.team;
+    let project = msg.payload?.project;
+    if (!team || !project) {
+      const cur = await getActiveTeamProjectNames();
+      team = team || cur.teamName;
+      project = project || cur.projectName;
+    }
+
+    const payload = { action, timestamp, pageUrl, pageTitle, team, project };
+
+    // ---- Spreadsheetモードの処理 ----
+    if (settings.sheetMode) {
+      if (action === "clock_in") {
+        await setSeg({ start: timestamp, team, project });
+      } else if (action === "project_switch") {
+        const prev = await getSeg();
+        if (prev) await finalizeSegment(timestamp, prev);
+        await setSeg({ start: timestamp, team, project });
+      } else if (action === "clock_out") {
+        const prev = await getSeg();
+        if (prev) await finalizeSegment(timestamp, prev);
+        await clearSeg();
+      }
+    }
+
+    // ---- 既存動作（任意の API POST / bridge.html オープン）----
     let ok = false;
     if (settings.enableDirectPost && settings.targetApiUrl) {
       try {
@@ -212,13 +541,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         type: "basic",
         iconUrl: "icons/icon128.png",
         title: "勤怠記録を送信しました",
-        message: `${action === "clock_in" ? "出勤" : "退勤"}：${new Date(
-          timestamp
-        ).toLocaleString()}`,
+        message: `${
+          action === "clock_in"
+            ? "出勤"
+            : action === "clock_out"
+            ? "退勤"
+            : "プロジェクト切替"
+        }：${new Date(timestamp).toLocaleString()}`,
         priority: 0,
       });
     }
-    sendResponse({ ok });
+    sendResponse({ ok, spreadsheet: settings.sheetMode });
   })();
-  return true; // 非同期でsendResponseを呼び出すためtrueを返す
+
+  return true; // async
 });
