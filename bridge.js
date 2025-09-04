@@ -316,6 +316,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const source = params.get("source");
   const page = params.get("page");
   const ref = params.get("ref");
+  const team = params.get("team");
+  const project = params.get("project");
 
   const statusEl = document.getElementById("status");
   const tableBody = document.getElementById("tbody");
@@ -337,7 +339,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!exists) {
       // 新規レコードの場合
       // 新しいレコードを作成して保存
-      const rec = { id: Date.now(), action, timestamp, source, page, ref };
+      const rec = {
+        id: Date.now(),
+        action,
+        timestamp,
+        source,
+        team,
+        project,
+        page,
+        ref
+      };
       logs.push(rec);
       saveLogs(logs);
       justRecorded = true; // ローカル保存
@@ -370,7 +381,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       (l) => l.action === action && l.timestamp === timestamp
     );
     const label =
-      action === "clock_in" ? "出勤" : action === "clock_out" ? "退勤" : action;
+      action === "clock_in" ? "出勤" : action === "clock_out" ? "退勤" : action === "project_switch" ? "切替" : action;
     statusEl.innerHTML = ok
       ? `<span class="stat"><span class="dot okdot"></span>記録済み: <b>${label}</b> / <b>${fmtJP(
           timestamp
@@ -399,12 +410,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       ? "出勤"
       : latest.action === "clock_out"
       ? "退勤"
+      : latest.action === "project_switch"
+      ? "切替"
       : latest.action
     : "";
   latestEl.innerHTML = latest
     ? `<div class="row" style="gap:12px;flex-wrap:wrap">
          <span class="badge ${
-           latest.action === "clock_in" ? "in" : "out"
+           latest.action === "clock_in" ? "in" : latest.action === "project_switch" ? "warn" : "out"
          }">${lab}</span>
          <span class="dt">${fmtJP(latest.timestamp)}</span>
          <span class="utc">${fmtUTCshort(latest.timestamp)}</span>
@@ -450,6 +463,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           ? "出勤"
           : r.action === "clock_out"
           ? "退勤"
+          : r.action === "project_switch"
+          ? "切替"
           : r.action;
       let preciseCell = "",
         quarterCell = "";
@@ -459,20 +474,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         preciseCell = `${precise}（${p.totalMin}分）`;
         quarterCell = `${p.quarterHoursStr}時間（${p.quarterMin}分）`;
       }
+      const esc = (s)=> String(s ?? "").replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td class="small">${rows.length - idx}</td>
         <td><span class="badge ${
-          r.action === "clock_in" ? "in" : "out"
+          r.action === "clock_in" ? "in" : r.action === "project_switch" ? "warn" : "out"
         }">${lab2}</span></td>
         <td>${cellDateHTML(r.timestamp)}</td>
         <td class="small">${r.source || ""}</td>
-        <td class="small">${r.page ? r.page.replace(/\+/g, " ") : ""}</td>
-        <td class="small">${
-          r.ref
-            ? `<a href="${r.ref}" target="_blank" rel="noreferrer">リンク</a>`
-            : ""
-        }</td>
+        <td class="small">${r.team || ""}</td>
+        <td class="small">${r.project || ""}</td>
+        <td class="small">${r.page ? esc(r.page).replace(/\+/g, " ") : ""}</td>
+        <td class="small">${r.ref ? `<a href="${esc(r.ref)}" target="_blank" rel="noreferrer">リンク</a>` : ""}</td>
         <td class="small">${preciseCell}</td>
         <td class="small">${quarterCell}</td>`;
       tableBody.appendChild(tr);

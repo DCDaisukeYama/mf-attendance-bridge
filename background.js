@@ -355,6 +355,27 @@ function resolveColumnLetter(headers, headerStartCol, headerName) {
   return a1ColFromNumber(start + idx);
 }
 
+// スプレッドシートから指定セルの現在値を取得（CSV経由）
+async function getCurrentCellValue(spreadsheetId, sheetName, col, row) {
+  try {
+    const range = `${col}${row}:${col}${row}`;
+    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&range=${range}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+    
+    const text = (await res.text()).trim();
+    if (!text) return 0;
+    
+    // CSVのセル値をパース（数値として解釈）
+    const value = text.replace(/^"|"$/g, '').trim();
+    const numValue = parseFloat(value);
+    return isNaN(numValue) ? 0 : numValue;
+  } catch (error) {
+    log(`Failed to get current value for ${col}${row}:`, error);
+    return 0; // エラー時は0を返す
+  }
+}
+
 async function postToGAS({ endIso, projectName, valueDecimal }) {
   log("postToGAS called with:", { endIso, projectName, valueDecimal });
 
@@ -409,6 +430,12 @@ async function postToGAS({ endIso, projectName, valueDecimal }) {
     return { ok: false, reason: `header not found for project=${projectName}` };
   }
 
+  // 既存の値を取得して累積計算
+  const currentValue = await getCurrentCellValue(spreadsheetId, sheetName, letter, row);
+  const newValue = currentValue + valueDecimal;
+  
+  log(`Accumulating values: current=${currentValue} + new=${valueDecimal} = total=${newValue}`);
+
   // WebアプリURLからトークンを抽出
   const token = extractTokenFromWebAppUrl(settings.sheetWebAppUrl);
 
@@ -417,7 +444,7 @@ async function postToGAS({ endIso, projectName, valueDecimal }) {
     spreadsheetId,
     sheetName,
     row,
-    values: [{ col: letter, value: valueDecimal }],
+    values: [{ col: letter, value: newValue }], // 累積後の値を送信
   };
 
   log("Sending to GAS:", body);

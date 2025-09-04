@@ -48,7 +48,7 @@ function findActive(teams, tid, pid) {
   return { team: t, project: p };
 }
 
-function render(listRoot, data) {
+function render(listRoot, data, selectedTeamId, selectedProjectId) {
   listRoot.innerHTML = "";
   data.teams.forEach((team) => {
     const teamDiv = document.createElement("div");
@@ -69,15 +69,14 @@ function render(listRoot, data) {
 
     const projs = teamDiv.querySelector(".projs");
     team.projects?.forEach((p) => {
-      const isActive =
-        data.activeTeamId === team.id && data.activeProjectId === p.id;
+      const isSelected = selectedTeamId === team.id && selectedProjectId === p.id;
       const row = document.createElement("div");
       row.className = "proj";
       row.dataset.pid = p.id;
       row.innerHTML = `
                 <div class="left">
                     <input type="radio" name="proj" ${
-                      isActive ? "checked" : ""
+                      isSelected ? "checked" : ""
                     } />
                     <span>${p.name}</span>
                 </div>
@@ -116,7 +115,7 @@ function sendProjectSwitch(teamName, projName) {
     action: "project_switch",
     timestamp: new Date().toISOString(),
     pageUrl: location.href,
-    pageTitle: "project switch",
+    pageTitle: "プロジェクト切替",
     team: teamName,
     project: projName,
   };
@@ -175,9 +174,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   const list = document.getElementById("list");
   const activeLabel = document.getElementById("activeLabel");
   const switchBtn = document.getElementById("switchBtn");
+  
+  // 現在の選択状態を追跡するための変数
+  let selectedTeamId = data.activeTeamId;
+  let selectedProjectId = data.activeProjectId;
 
-  render(list, data);
+  // 切替ボタンの表示状態を更新する関数
+  function updateSwitchButtonVisibility() {
+    const isDifferent = selectedTeamId !== data.activeTeamId || selectedProjectId !== data.activeProjectId;
+    switchBtn.style.display = isDifferent ? 'block' : 'none';
+  }
+
+  render(list, data, selectedTeamId, selectedProjectId);
   updateActiveLabel(activeLabel, data);
+  updateSwitchButtonVisibility();
 
   // ====== シートの項目（B1:R1）を表示 ======
   (async () => {
@@ -221,11 +231,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       b.onclick = async () => {
         const team = ensureTeam(data, ssTeam || "所属チーム");
         const pj = ensureProject(team, h);
-        data.activeTeamId = team.id;
-        data.activeProjectId = pj.id;
-        await saveAll(data);
-        render(list, data);
+        selectedTeamId = team.id;
+        selectedProjectId = pj.id;
+        render(list, data, selectedTeamId, selectedProjectId);
         updateActiveLabel(activeLabel, data);
+        updateSwitchButtonVisibility();
       };
       chips.appendChild(b);
     });
@@ -238,7 +248,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     data.teams.push({ id: crypto.randomUUID(), name, projects: [] });
     await saveAll(data);
-    render(list, data);
+    render(list, data, selectedTeamId, selectedProjectId);
   });
 
   document.getElementById("addProject").addEventListener("click", async () => {
@@ -252,7 +262,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     team.projects.push({ id: crypto.randomUUID(), name: pj });
     await saveAll(data);
-    render(list, data);
+    render(list, data, selectedTeamId, selectedProjectId);
   });
 
   // リスト委譲
@@ -270,11 +280,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       (e.target.matches("input[type=radio]") || e.target.closest(".left"))
     ) {
       const pid = projEl.dataset.pid;
-      data.activeTeamId = tid;
-      data.activeProjectId = pid;
-      await saveAll(data);
-      updateActiveLabel(activeLabel, data);
-      render(list, data);
+      selectedTeamId = tid;
+      selectedProjectId = pid;
+      render(list, data, selectedTeamId, selectedProjectId);
+      updateSwitchButtonVisibility();
       return;
     }
 
@@ -284,7 +293,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (nm) {
         team.name = nm;
         await saveAll(data);
-        render(list, data);
+        render(list, data, selectedTeamId, selectedProjectId);
         updateActiveLabel(activeLabel, data);
       }
       return;
@@ -296,7 +305,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (nm) {
         proj.name = nm;
         await saveAll(data);
-        render(list, data);
+        render(list, data, selectedTeamId, selectedProjectId);
         updateActiveLabel(activeLabel, data);
       }
       return;
@@ -315,9 +324,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       );
       data.activeTeamId = t2?.id;
       data.activeProjectId = p2?.id;
+      selectedTeamId = t2?.id;
+      selectedProjectId = p2?.id;
       await saveAll(data);
-      render(list, data);
+      render(list, data, selectedTeamId, selectedProjectId);
       updateActiveLabel(activeLabel, data);
+      updateSwitchButtonVisibility();
       return;
     }
 
@@ -336,23 +348,38 @@ document.addEventListener("DOMContentLoaded", async () => {
       );
       data.activeTeamId = t2?.id;
       data.activeProjectId = p2?.id;
+      selectedTeamId = t2?.id;
+      selectedProjectId = p2?.id;
       await saveAll(data);
-      render(list, data);
+      render(list, data, selectedTeamId, selectedProjectId);
       updateActiveLabel(activeLabel, data);
+      updateSwitchButtonVisibility();
       return;
     }
   });
 
-  // 切替ボタン：現在選択で switch を記録 & bridge.html へ
+  // 切替ボタン：選択したプロジェクトに切替
   switchBtn.addEventListener("click", async () => {
     const { team, project } = findActive(
       data.teams,
-      data.activeTeamId,
-      data.activeProjectId
+      selectedTeamId,
+      selectedProjectId
     );
     if (!team || !project) return;
 
+    // データを更新して保存
+    data.activeTeamId = selectedTeamId;
+    data.activeProjectId = selectedProjectId;
+    await saveAll(data);
+
+    // プロジェクト切替を記録
     sendProjectSwitch(team.name, project.name);
+    
+    // UIを更新
+    updateActiveLabel(activeLabel, data);
+    updateSwitchButtonVisibility();
+    render(list, data, selectedTeamId, selectedProjectId);
+    
     window.close(); // ポップアップは閉じる
   });
 });
