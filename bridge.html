@@ -146,9 +146,11 @@
       <!-- アクションボタン行 -->
       <div class="row">
         <button id="btnExport" class="btn">CSVエクスポート</button> <!-- CSVエクスポートボタン -->
+        <button id="btnRewriteSheet" class="btn">シート再書き込み</button> <!-- 休憩時間考慮でシート再書き込みボタン -->
         <button id="btnClear" class="btn warn">ログを全消去</button> <!-- ログ全消去ボタン -->
         <span id="apiStatus" class="muted small" style="margin-left:auto"></span> <!-- API送信結果表示 -->
       </div>
+      <div id="rewriteStatus" class="small muted" style="margin-top:8px"></div> <!-- 再書き込みステータス表示 -->
     </div>
 
     <!-- 右カラム: 最新記録表示カード -->

@@ -512,8 +512,165 @@ async function finalizeSegment(endIso, prevSeg) {
   return res;
 }
 
+// 休憩時間を考慮した値で直接スプレッドシートに書き込み（上書き）
+async function rewriteSheetWithBreakTime({ endIso, projectName, actualValueDecimal }) {
+  log("rewriteSheetWithBreakTime called with:", { endIso, projectName, actualValueDecimal });
+
+  try {
+    if (!settings.sheetMode) {
+      log("Sheet mode is disabled");
+      return { ok: false, reason: "sheetMode off" };
+    }
+
+    if (
+      !settings.sheetWebAppUrl ||
+      (!settings.spreadsheetId && !settings.spreadsheetUrl)
+    ) {
+      const reason = "missing webAppUrl or spreadsheetId";
+      log(reason, {
+        sheetWebAppUrl: !!settings.sheetWebAppUrl,
+        spreadsheetId: !!settings.spreadsheetId,
+        spreadsheetUrl: !!settings.spreadsheetUrl
+      });
+      return { ok: false, reason };
+    }
+
+    // シート名・行
+    const sheetName = monthSheetNameByFormat(settings.sheetNameFormat, endIso);
+    const { day } = jstParts(endIso);
+    const row = rowIndexForDay(day);
+    
+    log("Sheet calculation:", { sheetName, day, row, endIso });
+
+    // SpreadSheet ID
+    let spreadsheetId = settings.spreadsheetId;
+    if (!spreadsheetId && settings.spreadsheetUrl) {
+      const m = String(settings.spreadsheetUrl).match(
+        /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/
+      );
+      spreadsheetId = m ? m[1] : "";
+    }
+    if (!spreadsheetId) {
+      log("spreadsheetId empty after extraction");
+      return { ok: false, reason: "spreadsheetId empty" };
+    }
+
+    // ヘッダーを取得
+    log("Getting headers for:", { sheetName, spreadsheetId });
+    const headers = await getHeadersForMonth(sheetName, spreadsheetId);
+    log("Retrieved headers:", headers);
+    
+    const letter = resolveColumnLetter(
+      headers,
+      settings.sheetHeaderStartCol || "B",
+      projectName
+    );
+    if (!letter) {
+      const reason = `header not found for project=${projectName}`;
+      log(reason, { projectName, headers, startCol: settings.sheetHeaderStartCol });
+      return { ok: false, reason };
+    }
+
+    log("Column resolved:", { projectName, letter });
+
+    // WebアプリURLからトークンを抽出
+    const token = extractTokenFromWebAppUrl(settings.sheetWebAppUrl);
+
+    const body = {
+      token: token,
+      spreadsheetId,
+      sheetName,
+      row,
+      values: [{ col: letter, value: actualValueDecimal }], // 休憩時間考慮済みの値で上書き
+      operation: "rewrite", // 再書き込みモードを指定
+      rewrite: true // 後方互換性のため
+    };
+
+    log("Sending request to GAS:", body);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000); // 25秒でタイムアウト
+
+    const res = await fetch(settings.sheetWebAppUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+      keepalive: true,
+    });
+
+    clearTimeout(timeoutId);
+
+    log("GAS response received:", { status: res.status, ok: res.ok });
+
+    const responseText = await res.text();
+    log("GAS response text:", responseText);
+
+    const json = responseText ? JSON.parse(responseText) : {};
+    const result = { ok: !!json.ok, status: res.status, json };
+
+    log("Final rewrite result:", result);
+    return result;
+  } catch (e) {
+    log("Rewrite error:", e.message || String(e));
+    return { ok: false, error: e.message || String(e), stack: e.stack };
+  }
+}
+
 // ===== Message handler =====
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg?.type === "REWRITE_SHEET_WITH_BREAK") {
+    // 休憩時間を考慮した再書き込み処理
+    (async () => {
+      let responseSent = false;
+      
+      const safeSendResponse = (response) => {
+        if (!responseSent) {
+          responseSent = true;
+          try {
+            sendResponse(response);
+          } catch (e) {
+            log("Error sending response:", e);
+          }
+        }
+      };
+      
+      try {
+        await loadSettings();
+        
+        const { inTime, outTime, team, project, actualMs } = msg.payload || {};
+        
+        log("REWRITE_SHEET_WITH_BREAK received:", { inTime, outTime, team, project, actualMs });
+        
+        if (!inTime || !outTime || !project || actualMs === undefined) {
+          const errorMsg = "missing required parameters";
+          log(errorMsg, { inTime: !!inTime, outTime: !!outTime, project: !!project, actualMs: actualMs });
+          safeSendResponse({ ok: false, reason: errorMsg });
+          return;
+        }
+
+        // 15分単位の小数値に変換（休憩時間考慮済みの実際の勤務時間から）
+        const actualValueDecimal = quarterHoursDecimal(actualMs);
+        
+        log("Calling rewriteSheetWithBreakTime with:", { outTime, project, actualValueDecimal });
+        
+        const result = await rewriteSheetWithBreakTime({
+          endIso: outTime,
+          projectName: project,
+          actualValueDecimal: actualValueDecimal
+        });
+        
+        log("rewriteSheetWithBreakTime result:", result);
+        safeSendResponse(result);
+      } catch (error) {
+        log("Error in REWRITE_SHEET_WITH_BREAK handler:", error);
+        safeSendResponse({ ok: false, reason: error.message || String(error), error: String(error) });
+      }
+    })();
+    
+    return true; // async
+  }
+
   if (msg?.type !== "MF_BRIDGE_EVENT") return;
 
   (async () => {
