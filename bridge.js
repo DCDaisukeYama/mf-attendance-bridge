@@ -71,32 +71,32 @@ const fmtZero2 = (n) => String(n).padStart(2, "0");
 const fmtJP = (iso) => {
   try {
     const d = new Date(iso);
-    const y = new Intl.DateTimeFormat("ja-JP", {
+    
+    // 日本時間での各部分を取得（数値として）
+    const parts = new Intl.DateTimeFormat("ja-JP", {
       timeZone: tzJP,
       year: "numeric",
-    }).format(d);
-    const m = new Intl.DateTimeFormat("ja-JP", {
-      timeZone: tzJP,
-      month: "numeric",
-    }).format(d);
-    const da = new Intl.DateTimeFormat("ja-JP", {
-      timeZone: tzJP,
-      day: "numeric",
-    }).format(d);
-    const hh = new Intl.DateTimeFormat("ja-JP", {
-      timeZone: tzJP,
+      month: "2-digit", 
+      day: "2-digit",
       hour: "2-digit",
-      hour12: false,
-    }).format(d);
-    const mm = new Intl.DateTimeFormat("ja-JP", {
-      timeZone: tzJP,
       minute: "2-digit",
-    }).format(d);
-    const ss = new Intl.DateTimeFormat("ja-JP", {
-      timeZone: tzJP,
       second: "2-digit",
-    }).format(d);
-    return `${y}年${m}月${da}日 ${hh}:${mm}:${ss}`;
+      hour12: false
+    }).formatToParts(d);
+    
+    // 各部分を抽出
+    const year = parts.find(part => part.type === 'year').value;
+    const month = parts.find(part => part.type === 'month').value;
+    const day = parts.find(part => part.type === 'day').value;
+    const hour = parts.find(part => part.type === 'hour').value;
+    const minute = parts.find(part => part.type === 'minute').value;
+    const second = parts.find(part => part.type === 'second').value;
+    
+    // 月と日から先頭の0を削除
+    const m = parseInt(month, 10);
+    const da = parseInt(day, 10);
+    
+    return `${year}年${m}月${da}日 ${hour}時${minute}分${second}秒`;
   } catch {
     return iso;
   }
@@ -178,6 +178,232 @@ function translatePage(page) {
   return page || "";
 }
 
+// プロジェクト切替を考慮した作業セグメントを構築
+async function buildWorkSegments(logs) {
+  // 休憩時間設定を取得
+  const breakSettings = await chrome.storage.sync.get([
+    "breakStart",
+    "breakEnd",
+  ]);
+  const breakStart = breakSettings.breakStart || "13:00";
+  const breakEnd = breakSettings.breakEnd || "14:00";
+
+  const sorted = [...logs].sort(
+    (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+  );
+  
+  const segments = [];
+  let currentStart = null;
+  let currentProject = null;
+  let currentTeam = null;
+
+  for (let i = 0; i < sorted.length; i++) {
+    const log = sorted[i];
+    
+    if (log.action === "clock_in") {
+      currentStart = log;
+      currentProject = log.project;
+      currentTeam = log.team;
+    } else if (log.action === "project_switch" && currentStart) {
+      // 前のプロジェクトのセグメントを終了
+      if (currentProject && currentStart) {
+        const ms = new Date(log.timestamp) - new Date(currentStart.timestamp);
+        if (ms > 0) {
+          const breakOverlapMs = calculateBreakOverlap(
+            currentStart.timestamp,
+            log.timestamp,
+            breakStart,
+            breakEnd
+          );
+          const actualMs = ms - breakOverlapMs;
+
+          segments.push({
+            startLog: currentStart,
+            endLog: log,
+            project: currentProject,
+            team: currentTeam,
+            diffMs: ms,
+            actualMs: actualMs,
+            breakOverlapMs: breakOverlapMs,
+            type: 'project_segment'
+          });
+        }
+      }
+      
+      // 新しいプロジェクトの開始
+      currentStart = { ...log, action: "clock_in" }; // project_switchを疑似clock_inとして扱う
+      currentProject = log.project;
+      currentTeam = log.team;
+    } else if (log.action === "clock_out" && currentStart) {
+      // 最後のセグメントを終了
+      if (currentProject && currentStart) {
+        const ms = new Date(log.timestamp) - new Date(currentStart.timestamp);
+        if (ms > 0) {
+          const breakOverlapMs = calculateBreakOverlap(
+            currentStart.timestamp,
+            log.timestamp,
+            breakStart,
+            breakEnd
+          );
+          const actualMs = ms - breakOverlapMs;
+
+          segments.push({
+            startLog: currentStart,
+            endLog: log,
+            project: currentProject,
+            team: currentTeam,
+            diffMs: ms,
+            actualMs: actualMs,
+            breakOverlapMs: breakOverlapMs,
+            type: 'final_segment'
+          });
+        }
+      }
+      
+      currentStart = null;
+      currentProject = null;
+      currentTeam = null;
+    }
+  }
+
+  return segments;
+}
+
+// 休憩時間を考慮したスプレッドシート再書き込み機能
+async function rewriteSheetWithBreakTime(logs) {
+  const rewriteStatusEl = document.getElementById("rewriteStatus");
+  
+  try {
+    rewriteStatusEl.textContent = "休憩時間を考慮した再書き込み処理を開始しています...";
+    
+    // プロジェクト切替を考慮した作業セグメントを作成
+    const segments = await buildWorkSegments(logs);
+    
+    if (segments.length === 0) {
+      rewriteStatusEl.textContent = "再書き込み対象のデータがありません";
+      setTimeout(() => rewriteStatusEl.textContent = "", 3000);
+      return;
+    }
+
+    let successCount = 0;
+    let errorCount = 0;
+    
+    rewriteStatusEl.textContent = `${segments.length}件のセグメントを処理中...`;
+    
+    // セグメント再書き込みのリトライ機能付き関数
+    const rewriteSegmentWithRetry = async (segment, maxRetries = 3) => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // バックグラウンドスクリプトにメッセージを送信して再書き込み（タイムアウト付き）
+          const response = await Promise.race([
+            new Promise((resolve, reject) => {
+              const message = {
+                type: "REWRITE_SHEET_WITH_BREAK",
+                payload: {
+                  inTime: segment.startLog.timestamp,
+                  outTime: segment.endLog.timestamp,
+                  team: segment.team,
+                  project: segment.project,
+                  actualMs: segment.actualMs // 休憩時間を考慮した実際の勤務時間
+                }
+              };
+              
+              console.log("Sending message to background:", message);
+              
+              chrome.runtime.sendMessage(message, (response) => {
+                console.log("Received response from background:", response);
+                
+                if (chrome.runtime.lastError) {
+                  console.error("Chrome runtime error:", chrome.runtime.lastError);
+                  reject(new Error(chrome.runtime.lastError.message));
+                } else if (response === undefined) {
+                  console.error("Received undefined response");
+                  reject(new Error('Received undefined response from background script'));
+                } else {
+                  resolve(response);
+                }
+              });
+            }),
+            // 20秒でタイムアウト（短縮）
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Request timeout after 20 seconds')), 20000)
+            )
+          ]);
+          
+          return response; // 成功した場合はレスポンスを返す
+        } catch (error) {
+          console.warn(`セグメント再書き込み試行 ${attempt}/${maxRetries} 失敗:`, error.message, segment.project);
+          
+          if (attempt === maxRetries) {
+            throw error; // 最後の試行でも失敗した場合はエラーを投げる
+          }
+          
+          // 次の試行前に少し待機（指数バックオフ）
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
+    };
+
+    // 各セグメントについてスプレッドシートに再書き込み
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      
+      try {
+        const response = await rewriteSegmentWithRetry(segment);
+        
+        if (response?.ok) {
+          successCount++;
+          console.log(`セグメント ${i + 1}/${segments.length} 成功:`, segment.project);
+        } else {
+          errorCount++;
+          console.warn(`再書き込み失敗 (${i + 1}/${segments.length}):`, response, segment);
+        }
+        
+      } catch (error) {
+        errorCount++;
+        console.error(`再書き込み処理最終エラー (${i + 1}/${segments.length}):`, error.message, segment);
+      }
+      
+      // 進捗表示を更新
+      rewriteStatusEl.textContent = `処理中... (${i + 1}/${segments.length}) 成功: ${successCount}, 失敗: ${errorCount}`;
+      
+      // 短い間隔を空けてAPI制限を回避
+      if (i < segments.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    // 結果表示
+    if (errorCount === 0) {
+      rewriteStatusEl.textContent = `✓ 再書き込み完了: ${successCount}件のデータを処理しました`;
+      rewriteStatusEl.className = "small";
+      rewriteStatusEl.style.color = "var(--ok)";
+    } else {
+      rewriteStatusEl.textContent = `⚠ 再書き込み完了: 成功 ${successCount}件, 失敗 ${errorCount}件`;
+      rewriteStatusEl.className = "small";
+      rewriteStatusEl.style.color = "var(--warn)";
+    }
+    
+    // 3秒後にステータスをクリア
+    setTimeout(() => {
+      rewriteStatusEl.textContent = "";
+      rewriteStatusEl.style.color = "";
+      rewriteStatusEl.className = "small muted";
+    }, 5000);
+    
+  } catch (error) {
+    console.error("再書き込み処理でエラーが発生しました:", error);
+    rewriteStatusEl.textContent = "❌ 再書き込み処理でエラーが発生しました";
+    rewriteStatusEl.className = "small";
+    rewriteStatusEl.style.color = "var(--err)";
+    setTimeout(() => {
+      rewriteStatusEl.textContent = "";
+      rewriteStatusEl.style.color = "";
+      rewriteStatusEl.className = "small muted";
+    }, 5000);
+  }
+}
+
 // 勤怠ログをCSVファイルとしてエクスポート
 function exportCSV(rows, filename = "attendance_logs.csv") {
   const header = [
@@ -222,44 +448,66 @@ function exportCSV(rows, filename = "attendance_logs.csv") {
 function calculateBreakOverlap(inTime, outTime, breakStart, breakEnd) {
   if (!breakStart || !breakEnd) return 0;
 
-  // 日付部分を統一して時刻のみで比較
+  // ISOタイムスタンプをJSTのDateオブジェクトに変換
   const inDate = new Date(inTime);
   const outDate = new Date(outTime);
 
-  // 同一日の場合のみ休憩時間を考慮
-  if (inDate.toDateString() !== outDate.toDateString()) return 0;
+  // JSTでの日付を取得（Intl.DateTimeFormatを使用して正確な日付を取得）
+  const inJstDateStr = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(inDate);
+  
+  const outJstDateStr = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo", 
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(outDate);
 
-  // JST（UTC+9）での時刻を取得
-  const jstOffset = 9 * 60 * 60 * 1000;
-  const inJst = new Date(inDate.getTime() + jstOffset);
-  const outJst = new Date(outDate.getTime() + jstOffset);
+  // 同一日の場合のみ休憩時間を考慮
+  if (inJstDateStr !== outJstDateStr) return 0;
 
   // 時刻文字列をパース（HH:MM形式）
   const [breakStartHour, breakStartMin] = breakStart.split(":").map(Number);
   const [breakEndHour, breakEndMin] = breakEnd.split(":").map(Number);
 
-  // 休憩時間の開始・終了をJSTの日付で作成
-  const breakStartJst = new Date(
-    inJst.getFullYear(),
-    inJst.getMonth(),
-    inJst.getDate(),
-    breakStartHour,
-    breakStartMin
-  );
-  const breakEndJst = new Date(
-    inJst.getFullYear(),
-    inJst.getMonth(),
-    inJst.getDate(),
-    breakEndHour,
-    breakEndMin
-  );
+  // JSTでの出勤・退勤時刻を取得
+  const inJstTimeStr = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(inDate);
+  
+  const outJstTimeStr = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit", 
+    minute: "2-digit",
+    hour12: false
+  }).format(outDate);
 
-  // 重複期間を計算
-  const overlapStart = Math.max(inJst.getTime(), breakStartJst.getTime());
-  const overlapEnd = Math.min(outJst.getTime(), breakEndJst.getTime());
+  const [inHour, inMin] = inJstTimeStr.split(":").map(Number);
+  const [outHour, outMin] = outJstTimeStr.split(":").map(Number);
 
-  // 重複がある場合はその時間（ミリ秒）を返す
-  return overlapEnd > overlapStart ? overlapEnd - overlapStart : 0;
+  // 分単位で計算（より正確な比較のため）
+  const inMinutes = inHour * 60 + inMin;
+  const outMinutes = outHour * 60 + outMin;
+  const breakStartMinutes = breakStartHour * 60 + breakStartMin;
+  const breakEndMinutes = breakEndHour * 60 + breakEndMin;
+
+  // 重複する時間を分単位で計算
+  const overlapStartMinutes = Math.max(inMinutes, breakStartMinutes);
+  const overlapEndMinutes = Math.min(outMinutes, breakEndMinutes);
+
+  // 重複がある場合はその時間をミリ秒で返す
+  if (overlapEndMinutes > overlapStartMinutes) {
+    return (overlapEndMinutes - overlapStartMinutes) * 60 * 1000;
+  }
+  
+  return 0;
 }
 
 // ---- 労働時間ペア計算 ----
@@ -633,6 +881,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   document
     .getElementById("btnExport")
     .addEventListener("click", () => exportCSV(logs));
+
+  // 休憩時間考慮でシート再書き込みボタンのイベントリスナー
+  document.getElementById("btnRewriteSheet").addEventListener("click", async () => {
+    await rewriteSheetWithBreakTime(logs);
+  });
+
   // ログ消去ボタンのイベントリスナー
   document.getElementById("btnClear").addEventListener("click", async () => {
     if (confirm("ローカルの勤怠ログを全消去します。よろしいですか？")) {
