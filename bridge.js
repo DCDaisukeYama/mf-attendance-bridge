@@ -156,6 +156,28 @@ function csvEscape(v) {
   const s = String(v);
   return /[",\n]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s;
 }
+// action を日本語に変換する関数
+function translateAction(action) {
+  switch (action) {
+    case "clock_in":
+      return "出勤";
+    case "clock_out":
+      return "退勤";
+    case "project_switch":
+      return "切替";
+    default:
+      return action;
+  }
+}
+
+// page を日本語に変換する関数
+function translatePage(page) {
+  if (page === "project switch") {
+    return "プロジェクト切替";
+  }
+  return page || "";
+}
+
 // 勤怠ログをCSVファイルとしてエクスポート
 function exportCSV(rows, filename = "attendance_logs.csv") {
   const header = [
@@ -164,6 +186,8 @@ function exportCSV(rows, filename = "attendance_logs.csv") {
     "timestamp",
     "timestamp_jst",
     "source",
+    "team",
+    "project",
     "page",
     "ref",
   ];
@@ -171,11 +195,13 @@ function exportCSV(rows, filename = "attendance_logs.csv") {
     rows.map((r) =>
       [
         r.id,
-        r.action,
+        translateAction(r.action),
         r.timestamp,
         fmtJP(r.timestamp),
         r.source || "",
-        r.page || "",
+        r.team || "",
+        r.project || "",
+        translatePage(r.page),
         r.ref || "",
       ]
         .map(csvEscape)
@@ -192,8 +218,60 @@ function exportCSV(rows, filename = "attendance_logs.csv") {
   URL.revokeObjectURL(a.href);
 }
 
+// 休憩時間の重複する時間を計算（ミリ秒）
+function calculateBreakOverlap(inTime, outTime, breakStart, breakEnd) {
+  if (!breakStart || !breakEnd) return 0;
+
+  // 日付部分を統一して時刻のみで比較
+  const inDate = new Date(inTime);
+  const outDate = new Date(outTime);
+
+  // 同一日の場合のみ休憩時間を考慮
+  if (inDate.toDateString() !== outDate.toDateString()) return 0;
+
+  // JST（UTC+9）での時刻を取得
+  const jstOffset = 9 * 60 * 60 * 1000;
+  const inJst = new Date(inDate.getTime() + jstOffset);
+  const outJst = new Date(outDate.getTime() + jstOffset);
+
+  // 時刻文字列をパース（HH:MM形式）
+  const [breakStartHour, breakStartMin] = breakStart.split(":").map(Number);
+  const [breakEndHour, breakEndMin] = breakEnd.split(":").map(Number);
+
+  // 休憩時間の開始・終了をJSTの日付で作成
+  const breakStartJst = new Date(
+    inJst.getFullYear(),
+    inJst.getMonth(),
+    inJst.getDate(),
+    breakStartHour,
+    breakStartMin
+  );
+  const breakEndJst = new Date(
+    inJst.getFullYear(),
+    inJst.getMonth(),
+    inJst.getDate(),
+    breakEndHour,
+    breakEndMin
+  );
+
+  // 重複期間を計算
+  const overlapStart = Math.max(inJst.getTime(), breakStartJst.getTime());
+  const overlapEnd = Math.min(outJst.getTime(), breakEndJst.getTime());
+
+  // 重複がある場合はその時間（ミリ秒）を返す
+  return overlapEnd > overlapStart ? overlapEnd - overlapStart : 0;
+}
+
 // ---- 労働時間ペア計算 ----
-function buildPairs(logs) {
+async function buildPairs(logs) {
+  // 休憩時間設定を取得
+  const breakSettings = await chrome.storage.sync.get([
+    "breakStart",
+    "breakEnd",
+  ]);
+  const breakStart = breakSettings.breakStart || "13:00";
+  const breakEnd = breakSettings.breakEnd || "14:00";
+
   const sorted = [...logs].sort(
     (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
   );
@@ -207,14 +285,27 @@ function buildPairs(logs) {
         const inLog = inStack.pop();
         const ms = new Date(l.timestamp) - new Date(inLog.timestamp);
         if (ms > 0) {
-          const totalMin = Math.floor(ms / 60000);
-          const quarterUnits = Math.round(ms / (15 * 60 * 1000));
+          // 休憩時間の重複を計算
+          const breakOverlapMs = calculateBreakOverlap(
+            inLog.timestamp,
+            l.timestamp,
+            breakStart,
+            breakEnd
+          );
+
+          // 実労働時間（休憩時間を除外）
+          const actualMs = ms - breakOverlapMs;
+          const totalMin = Math.floor(actualMs / 60000);
+          const quarterUnits = Math.round(actualMs / (15 * 60 * 1000));
           const quarterMin = quarterUnits * 15;
           const quarterHoursStr = formatQuarterHours(quarterUnits);
+
           pairs.push({
             inLog,
             outLog: l,
-            diffMs: ms,
+            diffMs: ms, // 元の時間
+            actualMs, // 休憩時間除外後
+            breakOverlapMs, // 休憩時間の重複
             totalMin,
             quarterUnits,
             quarterMin,
@@ -239,7 +330,7 @@ function formatQuarterHours(units) {
     ? String(val)
     : val.toFixed(2).replace(/\.?0+$/, "");
 }
-function formatPreciseHMS(ms) {
+function formatPreciseHMS(ms, showBreakInfo = false, breakMs = 0) {
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -248,7 +339,16 @@ function formatPreciseHMS(ms) {
   if (h) parts.push(`${h}時間`);
   if (m) parts.push(`${m}分`);
   if (sec || parts.length === 0) parts.push(`${sec}秒`);
-  return parts.join("");
+
+  let result = parts.join("");
+
+  // 休憩時間の情報も表示する場合
+  if (showBreakInfo && breakMs > 0) {
+    const breakMin = Math.floor(breakMs / 60000);
+    result += ` (休憩${breakMin}分除外)`;
+  }
+
+  return result;
 }
 
 // ---- 週/月合計（JST基準） ----
@@ -284,11 +384,11 @@ function computeTotals(pairs) {
   for (const p of pairs) {
     const outJst = toJstDate(new Date(p.outLog.timestamp));
     if (outJst >= weekStart && outJst < weekEnd) {
-      weekPreciseMs += p.diffMs;
+      weekPreciseMs += p.actualMs || p.diffMs; // 休憩時間除外後の時間を使用
       weekRoundedMin += p.quarterMin;
     }
     if (outJst >= monthStart && outJst < monthEnd) {
-      monthPreciseMs += p.diffMs;
+      monthPreciseMs += p.actualMs || p.diffMs; // 休憩時間除外後の時間を使用
       monthRoundedMin += p.quarterMin;
     }
   }
@@ -316,6 +416,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const source = params.get("source");
   const page = params.get("page");
   const ref = params.get("ref");
+  const team = params.get("team");
+  const project = params.get("project");
 
   const statusEl = document.getElementById("status");
   const tableBody = document.getElementById("tbody");
@@ -337,7 +439,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!exists) {
       // 新規レコードの場合
       // 新しいレコードを作成して保存
-      const rec = { id: Date.now(), action, timestamp, source, page, ref };
+      const rec = {
+        id: Date.now(),
+        action,
+        timestamp,
+        source,
+        team,
+        project,
+        page,
+        ref,
+      };
       logs.push(rec);
       saveLogs(logs);
       justRecorded = true; // ローカル保存
@@ -370,7 +481,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       (l) => l.action === action && l.timestamp === timestamp
     );
     const label =
-      action === "clock_in" ? "出勤" : action === "clock_out" ? "退勤" : action;
+      action === "clock_in"
+        ? "出勤"
+        : action === "clock_out"
+        ? "退勤"
+        : action === "project_switch"
+        ? "切替"
+        : action;
     statusEl.innerHTML = ok
       ? `<span class="stat"><span class="dot okdot"></span>記録済み: <b>${label}</b> / <b>${fmtJP(
           timestamp
@@ -399,12 +516,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       ? "出勤"
       : latest.action === "clock_out"
       ? "退勤"
+      : latest.action === "project_switch"
+      ? "切替"
       : latest.action
     : "";
   latestEl.innerHTML = latest
     ? `<div class="row" style="gap:12px;flex-wrap:wrap">
          <span class="badge ${
-           latest.action === "clock_in" ? "in" : "out"
+           latest.action === "clock_in"
+             ? "in"
+             : latest.action === "project_switch"
+             ? "warn"
+             : "out"
          }">${lab}</span>
          <span class="dt">${fmtJP(latest.timestamp)}</span>
          <span class="utc">${fmtUTCshort(latest.timestamp)}</span>
@@ -417,9 +540,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     : `<span class="muted">まだ記録がありません</span>`;
 
   // ===== 集計 & テーブル描画 =====
-  function render() {
+  async function render() {
     tableBody.innerHTML = "";
-    const { pairs, byOutId } = buildPairs(logs);
+    const { pairs, byOutId } = await buildPairs(logs);
 
     // 週・月合計（右カード）
     const totals = computeTotals(pairs);
@@ -450,27 +573,53 @@ document.addEventListener("DOMContentLoaded", async () => {
           ? "出勤"
           : r.action === "clock_out"
           ? "退勤"
+          : r.action === "project_switch"
+          ? "切替"
           : r.action;
       let preciseCell = "",
         quarterCell = "";
       if (r.action === "clock_out" && byOutId.has(r.id)) {
         const p = byOutId.get(r.id);
-        const precise = formatPreciseHMS(p.diffMs);
+        const precise = formatPreciseHMS(
+          p.actualMs || p.diffMs,
+          p.breakOverlapMs > 0,
+          p.breakOverlapMs
+        );
         preciseCell = `${precise}（${p.totalMin}分）`;
         quarterCell = `${p.quarterHoursStr}時間（${p.quarterMin}分）`;
       }
+      const esc = (s) =>
+        String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            }[c])
+        );
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td class="small">${rows.length - idx}</td>
         <td><span class="badge ${
-          r.action === "clock_in" ? "in" : "out"
+          r.action === "clock_in"
+            ? "in"
+            : r.action === "project_switch"
+            ? "warn"
+            : "out"
         }">${lab2}</span></td>
         <td>${cellDateHTML(r.timestamp)}</td>
         <td class="small">${r.source || ""}</td>
-        <td class="small">${r.page ? r.page.replace(/\+/g, " ") : ""}</td>
+        <td class="small">${r.team || ""}</td>
+        <td class="small">${r.project || ""}</td>
+        <td class="small">${r.page ? esc(r.page).replace(/\+/g, " ") : ""}</td>
         <td class="small">${
           r.ref
-            ? `<a href="${r.ref}" target="_blank" rel="noreferrer">リンク</a>`
+            ? `<a href="${esc(
+                r.ref
+              )}" target="_blank" rel="noreferrer">リンク</a>`
             : ""
         }</td>
         <td class="small">${preciseCell}</td>
@@ -478,20 +627,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       tableBody.appendChild(tr);
     });
   }
-  render();
+  await render();
 
   // CSVエクスポートボタンのイベントリスナー
   document
     .getElementById("btnExport")
     .addEventListener("click", () => exportCSV(logs));
   // ログ消去ボタンのイベントリスナー
-  document.getElementById("btnClear").addEventListener("click", () => {
+  document.getElementById("btnClear").addEventListener("click", async () => {
     if (confirm("ローカルの勤怠ログを全消去します。よろしいですか？")) {
       logs = [];
       saveLogs(logs);
-      tableBody.innerHTML = "";
+      await render();
       latestEl.innerHTML = '<span class="muted">まだ記録がありません</span>';
-      totalsHost.textContent = "";
       statusEl.innerHTML = `<span class="stat"><span class="dot warndot"></span>ログを消去しました</span>`;
     }
   });

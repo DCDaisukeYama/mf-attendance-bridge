@@ -43,6 +43,7 @@
     }
     .grid{display:grid;gap:16px}
     @media(min-width:900px){.grid-2{grid-template-columns:1.2fr .8fr}}
+    @media(max-width:899px){.grid-2{grid-template-columns:1fr}}
     .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .btn{appearance:none;border:1px solid var(--line);background:var(--btn-bg);color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer}
     .btn:hover{filter:brightness(1.06)}
@@ -56,14 +57,63 @@
       word-break:break-all; overflow-wrap:anywhere; white-space:pre-wrap; /* 長いURLで横スクロールさせない */
     }
 
-    /* ==== テーブル：横スクロールなし・基本1行省略 ==== */
-    table.logtable{width:100%;border-collapse:collapse;border:1px solid var(--line);table-layout:fixed}
+    /* ==== テーブル：レスポンシブ対応 ==== */
+    .table-container{
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+    table.logtable{
+      width:100%;
+      border-collapse:collapse;
+      border:1px solid var(--line);
+      min-width: 1000px; /* 最小幅を設定 */
+    }
     table.logtable th, table.logtable td{
-      padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle;
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+      padding:8px 10px;
+      border-bottom:1px solid var(--line);
+      vertical-align:middle;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
     }
     table.logtable th{background:var(--th-bg);text-align:left;color:var(--muted)}
     tbody tr:hover{background:var(--row-hover)}
+    
+    /* カラム幅の調整（レスポンシブ） */
+    @media (min-width: 1200px) {
+      .logtable td:nth-child(1) { width: 4%; }   /* # */
+      .logtable td:nth-child(2) { width: 7%; }   /* 種別 */
+      .logtable td:nth-child(3) { width: 20%; }  /* 日時 */
+      .logtable td:nth-child(4) { width: 10%; }  /* source */
+      .logtable td:nth-child(5) { width: 12%; }  /* team */
+      .logtable td:nth-child(6) { width: 12%; }  /* project */
+      .logtable td:nth-child(7) { width: 15%; }  /* page */
+      .logtable td:nth-child(8) { width: 5%; }   /* ref */
+      .logtable td:nth-child(9) { width: 12%; }  /* 労働時間（正確） */
+      .logtable td:nth-child(10) { width: 13%; } /* 労働時間（0.25h刻み） */
+    }
+    
+    /* タブレット以下での表示調整 */
+    @media (max-width: 1199px) {
+      .logtable td:nth-child(4), /* source */
+      .logtable th:nth-child(4) { 
+        display: none; 
+      }
+      .logtable td:nth-child(7), /* page */
+      .logtable th:nth-child(7) { 
+        display: none; 
+      }
+    }
+    
+    /* スマホでの表示調整 */
+    @media (max-width: 768px) {
+      .logtable td:nth-child(5), /* team */
+      .logtable th:nth-child(5),
+      .logtable td:nth-child(8), /* ref */
+      .logtable th:nth-child(8) { 
+        display: none; 
+      }
+    }
     .badge{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);}
     .in{color:#0bd68a;background:rgba(11,214,138,.12);border-color:rgba(11,214,138,.4)}
     .out{color:#ffae33;background:rgba(255,174,51,.12);border-color:rgba(255,174,51,.4)}
@@ -121,35 +171,25 @@
         <div class="muted small">保存先：<code>localStorage.attendanceLogs</code></div> <!-- データ保存場所の表示 -->
       </div>
 
-      <table class="logtable">
-        <colgroup>
-          <col style="width:48px" />
-          <col style="width:72px" />
-          <col style="width:240px" />
-          <col style="width:110px" />
-          <col style="width:140px" />
-          <col style="width:160px" />
-          <col style="width:200px" />
-          <col style="width:64px" />
-          <col style="width:130px" />
-          <col style="width:130px" />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>種別</th>
-            <th>日時（JST / UTC）</th>
-            <th>source</th>
-            <th>team</th>
-            <th>project</th>
-            <th>page</th>
-            <th>ref</th>
-            <th>労働時間（正確）</th>
-            <th>労働時間（0.25h刻み）</th>
-          </tr>
-        </thead>
-        <tbody id="tbody"></tbody>
-      </table>
+      <div class="table-container">
+        <table class="logtable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>種別</th>
+              <th>日時（JST / UTC）</th>
+              <th>source</th>
+              <th>team</th>
+              <th>project</th>
+              <th>page</th>
+              <th>ref</th>
+              <th>労働時間（正確）</th>
+              <th>労働時間（0.25h刻み）</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
   <!-- ブリッジページの動作用JavaScript読み込み -->

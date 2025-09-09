@@ -5,180 +5,398 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>プロジェクト切替</title>
     <style>
-      /* ---------- Theme tokens ---------- */
+      /* ===== Theme tokens ===== */
       :root {
         --bg: #ffffff;
-        --fg: #111318;
-        --muted: #667085;
+        --fg: #0f1222;
+        --muted: #6b7280;
         --line: #e6eaf2;
-        --chip: #f2f6ff;
+        --card: #ffffff;
         --head: #f6f8fc;
-        --accent: #1b66d1;
-        --danger: #d92d20;
-        --btn: #f7f9fc;
-        --btn-hover: #eef3fb;
+        --chip: #f4f6fb;
+        --accent: #2563eb;
+        --accent-2: #7c3aed;
+        --danger: #ef4444;
+        --ok: #10b981;
+        --shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --bg: #0f1116;
+          --bg: #0d1117;
           --fg: #e6edf3;
-          --muted: #98a2b3;
-          --line: #263143;
-          --chip: #152238;
-          --head: #0f172a;
+          --muted: #9aa4b2;
+          --line: #253142;
+          --card: #0f1522;
+          --head: #0d1420;
+          --chip: #121a2b;
           --accent: #7db1ff;
-          --danger: #ff6166;
-          --btn: #0e1626;
-          --btn-hover: #13203a;
+          --accent-2: #c084fc;
+          --danger: #ff6b6b;
+          --ok: #34d399;
+          --shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
         }
       }
-      /* ---------- Base ---------- */
+
+      /* ===== Base ===== */
       * {
         box-sizing: border-box;
       }
+      html,
       body {
         margin: 0;
+      }
+      body {
+        width: 360px;
         background: var(--bg);
         color: var(--fg);
         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Inter,
           "Noto Sans JP", sans-serif;
-        width: 360px;
       }
       header {
         display: flex;
         align-items: center;
         justify-content: space-between;
         padding: 10px 12px;
-        border-bottom: 1px solid var(--line);
         background: var(--head);
+        border-bottom: 1px solid var(--line);
       }
       h1 {
-        font-size: 16px;
         margin: 0;
+        font-size: 15px;
+        letter-spacing: 0.02em;
       }
-      button,
-      input,
-      select {
-        font: inherit;
+      .wrap {
+        padding: 12px;
       }
-      input[type="radio"] {
-        accent-color: var(--accent);
-      }
-      /* ---------- Buttons ---------- */
-      .btn {
+
+      /* ===== Cards & buttons ===== */
+      .card {
+        background: var(--card);
         border: 1px solid var(--line);
-        background: var(--btn);
+        border-radius: 14px;
+        padding: 12px;
+        box-shadow: var(--shadow);
+        margin-bottom: 12px;
+      }
+      .btn {
+        appearance: none;
+        border: 1px solid var(--line);
+        background: #fff0;
         color: var(--fg);
-        padding: 6px 10px;
-        border-radius: 8px;
+        padding: 8px 12px;
+        border-radius: 10px;
         cursor: pointer;
-        transition: background 0.12s ease;
+        transition: all 0.15s ease;
       }
       .btn:hover {
-        background: var(--btn-hover);
+        transform: translateY(-1px);
+        background: var(--chip);
       }
       .btn:focus-visible {
         outline: 2px solid var(--accent);
         outline-offset: 2px;
       }
       .btn.primary {
-        border-color: transparent;
-        background: var(--accent);
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
         color: #fff;
+        border-color: transparent;
+        box-shadow: 0 6px 18px rgba(30, 64, 175, 0.25);
       }
       .btn.ghost {
-        background: transparent;
-      }
-      .btn.danger {
-        color: #fff;
-        background: var(--danger);
-        border-color: transparent;
-      }
-      .btn.ghost.danger {
-        background: transparent;
-        color: var(--danger);
         border-color: var(--line);
       }
-      /* ---------- Layout ---------- */
-      .wrap {
-        padding: 12px;
+      .btn.small {
+        padding: 6px 8px;
+        font-size: 12px;
       }
-      .row {
+
+      /* ===== Active card ===== */
+      .active {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 8px;
+        border-radius: 16px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        background: linear-gradient(
+          180deg,
+          color-mix(in oklab, var(--chip) 70%, transparent),
+          transparent
+        );
+      }
+      .active .left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        font-weight: 600;
+        border-radius: 999px;
+        font-size: 12px;
+        background: linear-gradient(
+          135deg,
+          color-mix(in oklab, var(--accent) 18%, transparent),
+          transparent
+        );
+        border: 1px solid var(--line);
+      }
+      .spark {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle at 30% 30%,
+          #fff,
+          color-mix(in oklab, var(--accent) 70%, #fff 0%) 60%,
+          transparent 61%
+        );
+        box-shadow: 0 0 12px color-mix(in oklab, var(--accent) 70%, #fff 0%);
       }
       .hint {
         color: var(--muted);
         font-size: 12px;
       }
-      .sec {
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        margin-top: 12px;
-        overflow: hidden;
-      }
-      .sec > h2 {
-        margin: 0;
-        padding: 8px 10px;
-        font-size: 13px;
-        background: var(--head);
-        border-bottom: 1px solid var(--line);
-      }
-      .team {
-        padding: 8px 10px;
-        border-bottom: 1px dashed var(--line);
-      }
-      .team:last-child {
-        border-bottom: 0;
-      }
-      .team-head {
+
+      /* ===== Status display ===== */
+      .status-display {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 12px;
       }
-      .team-name {
-        font-weight: 600;
-      }
-      .projs {
-        margin-top: 6px;
-        display: grid;
-        gap: 6px;
-      }
-      .proj {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 6px 8px;
-        background: var(--chip);
-      }
-      .proj .left {
+      .status-info {
         display: flex;
         align-items: center;
         gap: 8px;
       }
-      .tag {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 2px 8px;
-        border-radius: 999px;
-        border: 1px solid var(--line);
-        font-size: 12px;
-        background: var(--chip);
+      .status-text {
+        font-weight: 600;
+        font-size: 14px;
       }
-      .muted {
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .status-dot.working {
+        background: var(--ok);
+        box-shadow: 0 0 8px color-mix(in oklab, var(--ok) 70%, transparent);
+      }
+      .status-dot.break {
+        background: var(--accent-2);
+        box-shadow: 0 0 8px color-mix(in oklab, var(--accent-2) 70%, transparent);
+      }
+      .status-dot.off {
+        background: var(--muted);
+      }
+
+      /* ===== Form ===== */
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .g {
+        display: grid;
+        gap: 10px;
+      }
+      .g2 {
+        grid-template-columns: 1fr 1fr;
+      }
+      label {
+        font-size: 12px;
         color: var(--muted);
       }
-      .hr {
+      select,
+      input[type="time"] {
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--fg);
+      }
+
+      .section-title {
+        margin: 0 0 8px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .divider {
         height: 1px;
         background: var(--line);
-        margin: 10px 0;
+        margin: 8px 0;
       }
-      .small {
+
+      /* ===== Splash (open only) ===== */
+      .splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        z-index: 9999;
+        animation: fadeOut 0.6s ease 2.4s forwards;
+      }
+      @keyframes fadeOut {
+        to {
+          opacity: 0;
+          visibility: hidden;
+        }
+      }
+      .logo-container {
+        text-align: center;
+        position: relative;
+        scale: 1;
+      }
+      .logo-symbol {
+        width: clamp(96px, 42vw, 160px);
+        height: clamp(96px, 42vw, 160px);
+        margin: 0 auto 18px;
+        position: relative;
+        overflow: hidden;
+      }
+      .logo-bg {
+        position: absolute;
+        inset: 0;
+        background: #2c5aa0;
+        border-radius: 18px;
+        opacity: 0;
+        animation: fadeInBg 0.7s ease-out 0.15s forwards;
+      }
+      .logo-letters {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        color: #fff;
+        font-family: Arial, sans-serif;
+        font-size: clamp(62px, 22vw, 110px);
+      }
+      .letter-d {
+        opacity: 0;
+        transform: translateX(-40px);
+        animation: slideInD 0.55s ease-out 0.5s forwards;
+      }
+      .letter-c {
+        opacity: 0;
+        transform: translateX(40px);
+        animation: slideInC 0.55s ease-out 0.7s forwards;
+        margin-left: -6px;
+      }
+
+      .face-elements {
+        position: absolute;
+        inset: 0;
+      }
+      .eye {
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        background: black;
+        border-radius: 50%;
+        opacity: 0;
+        animation: popIn 0.35s ease-out 1.05s forwards;
+      }
+      .left-eye {
+        top: calc(50% - 10px);
+        left: calc(50% - 38px);
+      }
+      .right-eye {
+        top: calc(50% - 10px);
+        right: calc(50% - 42px);
+      }
+      .smile {
+        position: absolute;
+        left: 50%;
+        bottom: 18%;
+        transform: translateX(-50%);
+        width: 48px;
+        height: 24px;
+        border: 6px solid black;
+        border-top: none;
+        border-radius: 0 0 48px 48px;
+        opacity: 0;
+        animation: drawSmile 0.5s ease-out 1.25s forwards;
+      }
+
+      .company-name {
+        font-size: clamp(18px, 6vw, 26px);
+        font-weight: 800;
+        color: white;
+        opacity: 0;
+        transform: translateY(18px);
+        animation: fadeInText 0.6s ease-out 1.55s forwards;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.25);
+      }
+      .subtitle {
         font-size: 12px;
+        color: rgba(255, 255, 255, 0.9);
+        margin-top: 6px;
+        opacity: 0;
+        animation: fadeInSubtitle 0.45s ease-out 1.9s forwards;
+      }
+
+      @keyframes fadeInBg {
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes slideInD {
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+      @keyframes slideInC {
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+      @keyframes popIn {
+        0% {
+          opacity: 0;
+          transform: scale(0);
+        }
+        50% {
+          transform: scale(1.18);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      @keyframes drawSmile {
+        0% {
+          opacity: 0;
+          transform: translateX(-50%) scaleY(0);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(-50%) scaleY(1);
+        }
+      }
+      @keyframes fadeInText {
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      @keyframes fadeInSubtitle {
+        to {
+          opacity: 1;
+        }
       }
     </style>
   </head>
@@ -186,31 +404,120 @@
     <header>
       <h1>プロジェクト切替</h1>
       <div class="row">
-        <button id="addTeam" class="btn">＋ チーム</button>
-        <button id="addProject" class="btn">＋ PJ</button>
+        <button id="addTeam" class="btn small">＋ チーム</button>
+        <button id="addProject" class="btn small">＋ PJ</button>
       </div>
     </header>
+
     <div class="wrap">
-      <div id="active" class="row" style="justify-content: space-between">
-        <div class="row">
-          <span class="tag">選択中</span>
-          <span id="activeLabel" class="hint">未選択</span>
+      <!-- ステータス表示 -->
+      <div class="card" id="statusCard">
+        <div class="status-display">
+          <div id="attendanceStatus" class="status-info">
+            <span class="status-text">状況確認中...</span>
+          </div>
+          <button id="clockInShortcut" class="btn primary" style="display: none">
+            MoneyForward で出勤
+          </button>
         </div>
-        <button id="switchBtn" class="btn primary">
+      </div>
+
+      <!-- 選択中 -->
+      <div class="card active" id="activeCard">
+        <div class="left">
+          <span class="spark" aria-hidden="true"></span>
+          <div>
+            <div class="pill">選択中</div>
+            <div
+              id="activeLabel"
+              style="font-weight: 700; margin-top: 4px; font-size: 15px"
+            >
+              未選択
+            </div>
+          </div>
+        </div>
+        <button id="switchBtn" class="btn primary" style="display: none">
           このプロジェクトに切替
         </button>
       </div>
-      <div class="sec">
-        <h2>チーム / プロジェクト</h2>
-        <div id="list"></div>
+
+      <!-- セレクタ群 -->
+      <div class="card">
+        <p class="section-title">選択</p>
+        <div class="g g2">
+          <div>
+            <label for="teamSelect">チーム</label>
+            <select id="teamSelect"></select>
+          </div>
+          <div>
+            <label for="projectSelect">プロジェクト</label>
+            <select id="projectSelect"></select>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="g">
+          <div class="row" style="justify-content: space-between">
+            <label for="sheetSelect"
+              >シートの項目（B1:R1 / <span id="sheetMonth">-</span>）</label
+            >
+            <button id="refreshSheet" class="btn small">再読込</button>
+          </div>
+          <select id="sheetSelect">
+            <option value="">（シートから選択）</option>
+          </select>
+          <div class="hint">
+            シートの項目を選ぶと、チームに存在しない場合は自動追加して選択します。
+          </div>
+        </div>
       </div>
-      <div class="hr"></div>
-      <div class="small muted">
-        プロジェクトをクリックすると「選択中」が変わります。<br />
-        <b>切替</b>を押すと現在時刻で <code>project_switch</code> を記録して
-        bridge.html を開きます。
+
+      <!-- 休憩設定 -->
+      <div class="card">
+        <p class="section-title">休憩時間</p>
+        <div class="g g2">
+          <div>
+            <label for="breakStart">休憩開始</label>
+            <input type="time" id="breakStart" value="13:00" />
+          </div>
+          <div>
+            <label for="breakEnd">休憩終了</label>
+            <input type="time" id="breakEnd" value="14:00" />
+          </div>
+        </div>
+        <div class="row" style="margin-top: 10px">
+          <button id="saveBreakTime" class="btn">保存</button>
+          <span id="breakStatus" class="hint"></span>
+        </div>
+      </div>
+
+      <div class="hint" style="margin-top: 6px">
+        切替を押すと現在時刻で <code>project_switch</code> を記録して
+        bridge.html を開きます。<br />
+        休憩時間は労働時間から自動で除外されます。
       </div>
     </div>
+
+    <!-- 起動時のみのスプラッシュ -->
+    <div class="splash" id="splash" aria-hidden="true">
+      <div class="logo-container" id="logoContainer">
+        <div class="logo-symbol">
+          <div class="logo-bg"></div>
+          <div class="logo-letters">
+            <span class="letter-d">D</span><span class="letter-c">C</span>
+          </div>
+          <div class="face-elements">
+            <div class="eye left-eye"></div>
+            <div class="eye right-eye"></div>
+            <div class="smile"></div>
+          </div>
+        </div>
+        <div class="company-name">DreamCareer</div>
+        <div class="subtitle">あなたの夢のキャリアを見つけよう</div>
+      </div>
+    </div>
+
     <script src="popup.js"></script>
   </body>
 </html>
