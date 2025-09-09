@@ -195,15 +195,39 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 // 直接API POSTモード - 設定されたAPIエンドポイントに勤怠データを送信
 async function postDirect(payload) {
+  log("postDirect called with:", payload);
+  log("API URL:", settings.targetApiUrl);
+  log("API Key present:", !!settings.apiKey);
+  
   const headers = { "Content-Type": "application/json" };
   if (settings.apiKey) headers["Authorization"] = `Bearer ${settings.apiKey}`;
-  const res = await fetch(settings.targetApiUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-    keepalive: true,
-  });
-  return res.ok;
+  
+  try {
+    const res = await fetch(settings.targetApiUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
+    
+    log("postDirect response:", { status: res.status, ok: res.ok, statusText: res.statusText });
+    
+    if (!res.ok) {
+      log("postDirect failed with status:", res.status, res.statusText);
+      // レスポンスボディも記録（デバッグ用）
+      try {
+        const errorBody = await res.text();
+        log("postDirect error body:", errorBody);
+      } catch (bodyError) {
+        log("Could not read error body:", bodyError.message);
+      }
+    }
+    
+    return res.ok;
+  } catch (error) {
+    log("postDirect fetch error:", error.message);
+    return false;
+  }
 }
 
 // ブリッジページモード - bridge.htmlをタブで開いて勤怠データを渡す
