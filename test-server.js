@@ -136,7 +136,7 @@ function requestHandler(req, res) {
 }
 
 // 利用可能なポートを探してサーバー起動
-function startServer(startPort = 3001, maxPort = 3010) {
+function startServer(startPort = 3000, maxPort = 3010) {
   const server = http.createServer(requestHandler);
   
   server.on('error', (err) => {

@@ -269,6 +269,55 @@ async function buildWorkSegments(logs) {
   return segments;
 }
 
+// 同じ日の同じプロジェクトのセグメントを累積する
+function consolidateSegmentsByProject(segments) {
+  const consolidated = {};
+  
+  for (const segment of segments) {
+    // 日付を取得（JST）
+    const endDate = new Date(segment.endLog.timestamp);
+    const dateKey = endDate.toLocaleDateString('ja-JP', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit' 
+    }).replace(/\//g, '-'); // YYYY-MM-DD形式
+    
+    const key = `${dateKey}_${segment.project}`;
+    
+    if (!consolidated[key]) {
+      consolidated[key] = {
+        ...segment,
+        segments: [segment], // 元のセグメントを保持
+        totalActualMs: segment.actualMs,
+        totalDiffMs: segment.diffMs,
+        totalBreakOverlapMs: segment.breakOverlapMs
+      };
+      console.log(`新規作成: ${key}, actualMs: ${segment.actualMs}ms`);
+    } else {
+      // 累積処理
+      const prevTotal = consolidated[key].totalActualMs;
+      consolidated[key].segments.push(segment);
+      consolidated[key].totalActualMs += segment.actualMs;
+      consolidated[key].totalDiffMs += segment.diffMs;
+      consolidated[key].totalBreakOverlapMs += segment.breakOverlapMs;
+      
+      console.log(`累積: ${key}, 前回: ${prevTotal}ms + 今回: ${segment.actualMs}ms = 合計: ${consolidated[key].totalActualMs}ms`);
+      
+      // 最初のstartLogを保持（最早の開始時刻）
+      if (new Date(segment.startLog.timestamp) < new Date(consolidated[key].startLog.timestamp)) {
+        consolidated[key].startLog = segment.startLog;
+      }
+      
+      // 最後のendLogを更新（最新の終了時刻を保持）
+      if (new Date(segment.endLog.timestamp) > new Date(consolidated[key].endLog.timestamp)) {
+        consolidated[key].endLog = segment.endLog;
+      }
+    }
+  }
+  
+  return Object.values(consolidated);
+}
+
 // 休憩時間を考慮したスプレッドシート再書き込み機能
 async function rewriteSheetWithBreakTime(logs) {
   const rewriteStatusEl = document.getElementById("rewriteStatus");
@@ -277,18 +326,27 @@ async function rewriteSheetWithBreakTime(logs) {
     rewriteStatusEl.textContent = "休憩時間を考慮した再書き込み処理を開始しています...";
     
     // プロジェクト切替を考慮した作業セグメントを作成
-    const segments = await buildWorkSegments(logs);
+    const rawSegments = await buildWorkSegments(logs);
     
-    if (segments.length === 0) {
+    if (rawSegments.length === 0) {
       rewriteStatusEl.textContent = "再書き込み対象のデータがありません";
       setTimeout(() => rewriteStatusEl.textContent = "", 3000);
       return;
     }
 
+    // 同じ日の同じプロジェクトのセグメントを累積
+    const segments = consolidateSegmentsByProject(rawSegments);
+    
+    console.log(`累積処理: ${rawSegments.length}個のセグメントから${segments.length}個の累積セグメントを作成`, segments);
+
     let successCount = 0;
     let errorCount = 0;
     
-    rewriteStatusEl.textContent = `${segments.length}件のセグメントを処理中...`;
+    if (rawSegments.length !== segments.length) {
+      rewriteStatusEl.textContent = `${rawSegments.length}個のセグメントを${segments.length}個に累積して処理中...`;
+    } else {
+      rewriteStatusEl.textContent = `${segments.length}件のセグメントを処理中...`;
+    }
     
     // セグメント再書き込みのリトライ機能付き関数
     const rewriteSegmentWithRetry = async (segment, maxRetries = 3) => {
@@ -304,7 +362,7 @@ async function rewriteSheetWithBreakTime(logs) {
                   outTime: segment.endLog.timestamp,
                   team: segment.team,
                   project: segment.project,
-                  actualMs: segment.actualMs // 休憩時間を考慮した実際の勤務時間
+                  actualMs: segment.totalActualMs // 累積された休憩時間を考慮した実際の勤務時間
                 }
               };
               
@@ -374,12 +432,15 @@ async function rewriteSheetWithBreakTime(logs) {
     }
     
     // 結果表示
+    const accumulationText = rawSegments.length !== segments.length ? 
+      ` (${rawSegments.length}個のセグメントから累積)` : '';
+    
     if (errorCount === 0) {
-      rewriteStatusEl.textContent = `✓ 再書き込み完了: ${successCount}件のデータを処理しました`;
+      rewriteStatusEl.textContent = `✓ 再書き込み完了: ${successCount}件のプロジェクトデータを処理${accumulationText}`;
       rewriteStatusEl.className = "small";
       rewriteStatusEl.style.color = "var(--ok)";
     } else {
-      rewriteStatusEl.textContent = `⚠ 再書き込み完了: 成功 ${successCount}件, 失敗 ${errorCount}件`;
+      rewriteStatusEl.textContent = `⚠ 再書き込み完了: 成功 ${successCount}件, 失敗 ${errorCount}件${accumulationText}`;
       rewriteStatusEl.className = "small";
       rewriteStatusEl.style.color = "var(--warn)";
     }
@@ -787,6 +848,43 @@ document.addEventListener("DOMContentLoaded", async () => {
        </div>`
     : `<span class="muted">まだ記録がありません</span>`;
 
+  // ===== 本日合計の計算 =====
+  function computeTodayTotals(pairs) {
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+
+    let todayPreciseMs = 0;
+    let todayRoundedMs = 0;
+    const todayProjects = {};
+
+    for (const p of pairs) {
+      const outTime = new Date(p.outTime);
+      if (outTime >= todayStart && outTime < todayEnd) {
+        todayPreciseMs += p.actualMs || p.diffMs;
+        todayRoundedMs += p.quarterHours * 15 * 60 * 1000;
+        
+        // プロジェクト別集計
+        const projectKey = p.project || "不明";
+        if (!todayProjects[projectKey]) {
+          todayProjects[projectKey] = { preciseMs: 0, roundedMs: 0 };
+        }
+        todayProjects[projectKey].preciseMs += p.actualMs || p.diffMs;
+        todayProjects[projectKey].roundedMs += p.quarterHours * 15 * 60 * 1000;
+      }
+    }
+
+    return {
+      preciseMs: todayPreciseMs,
+      preciseText: formatPreciseHMS(todayPreciseMs),
+      roundedMs: todayRoundedMs,
+      roundedHoursText: (todayRoundedMs / (1000 * 60 * 60)).toFixed(2),
+      roundedMin: Math.floor(todayRoundedMs / 60000),
+      projects: todayProjects
+    };
+  }
+
   // ===== 集計 & テーブル描画 =====
   async function render() {
     tableBody.innerHTML = "";
@@ -812,6 +910,35 @@ document.addEventListener("DOMContentLoaded", async () => {
            totals.month.roundedHoursText
          }時間</b>（${totals.month.roundedMin}分）</span>
        </div>`;
+
+    // 本日合計（右カード）
+    const todayTotals = computeTodayTotals(pairs);
+    const todayTotalsHost = document.getElementById("todayTotals");
+    if (todayTotals.preciseMs === 0) {
+      todayTotalsHost.innerHTML = `<div class="muted">今日はまだ勤務記録がありません</div>`;
+    } else {
+      let projectsHtml = "";
+      const projectEntries = Object.entries(todayTotals.projects);
+      if (projectEntries.length > 0) {
+        projectsHtml = `<div style="margin-top:8px">
+          <div class="muted" style="font-size:11px;margin-bottom:4px">プロジェクト別:</div>
+          ${projectEntries.map(([project, data]) => 
+            `<div class="row" style="gap:8px;font-size:11px;margin-bottom:2px">
+              <span style="min-width:60px;font-weight:500">${project}:</span>
+              <span>${formatPreciseHMS(data.preciseMs)} (${(data.roundedMs / (1000 * 60 * 60)).toFixed(2)}h)</span>
+            </div>`
+          ).join('')}
+        </div>`;
+      }
+      
+      todayTotalsHost.innerHTML = `
+        <div class="row" style="gap:12px;flex-wrap:wrap">
+          <span class="small">正確: <b>${todayTotals.preciseText}</b>（${Math.floor(todayTotals.preciseMs / 60000)}分）</span>
+          <span class="small">0.25h: <b>${todayTotals.roundedHoursText}時間</b>（${todayTotals.roundedMin}分）</span>
+        </div>
+        ${projectsHtml}
+      `;
+    }
 
     // ログ（新しい順）
     const rows = [...logs].reverse();

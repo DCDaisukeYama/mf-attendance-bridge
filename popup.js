@@ -9,6 +9,13 @@ const KEY = {
   ACTIVE_PROJ: "activeProjectId", // 現在アクティブなプロジェクトID
   BREAK_START: "breakStart",     // 休憩開始時刻
   BREAK_END: "breakEnd",         // 休憩終了時刻
+  WORK_START: "workStart",       // 出社時刻
+  WORK_END: "workEnd",           // 退社時刻
+  ENABLE_NOTIFICATIONS: "enableNotifications", // 通知機能有効フラグ
+  ENABLE_PRE_WORK_NOTIFICATION: "enablePreWorkNotification", // 出社前通知有効フラグ
+  ENABLE_WORK_END_NOTIFICATION: "enableWorkEndNotification", // 退社通知有効フラグ
+  PRE_WORK_NOTIFY_MIN: "preWorkNotifyMin",     // 出社前通知（分前）
+  ENABLE_WORK_DAYS: "enableWorkDays",         // 平日のみ通知フラグ
 };
 
 // デフォルトデータ生成関数
@@ -26,13 +33,20 @@ function defaultData() {
     ],
     activeTeamId: tid,
     activeProjectId: pid,
-    breakStart: "13:00",  // デフォルト休憩開始時刻
-    breakEnd: "14:00",    // デフォルト休憩終了時刻
+    breakStart: "13:00",          // デフォルト休憩開始時刻
+    breakEnd: "14:00",            // デフォルト休憩終了時刻
+    workStart: "10:00",           // デフォルト出社時刻
+    workEnd: "19:00",             // デフォルト退社時刻
+    enableNotifications: false,   // 通知機能デフォルト無効
+    enablePreWorkNotification: true,  // 出社前通知デフォルト有効
+    enableWorkEndNotification: true,  // 退社通知デフォルト有効
+    preWorkNotifyMin: 15,         // 出社前通知デフォルト15分前
+    enableWorkDays: true,         // 平日のみ通知デフォルト有効
   };
 }
 
 // 全設定データ読み込み関数
-// Chrome同期ストレージからチーム・プロジェクト・休憩設定を取得
+// Chrome同期ストレージからチーム・プロジェクト・休憩設定・出社時間設定を取得
 async function loadAll() {
   const saved = await chrome.storage.sync.get([
     KEY.TEAMS,
@@ -40,6 +54,13 @@ async function loadAll() {
     KEY.ACTIVE_PROJ,
     KEY.BREAK_START,
     KEY.BREAK_END,
+    KEY.WORK_START,
+    KEY.WORK_END,
+    KEY.ENABLE_NOTIFICATIONS,
+    KEY.ENABLE_PRE_WORK_NOTIFICATION,
+    KEY.ENABLE_WORK_END_NOTIFICATION,
+    KEY.PRE_WORK_NOTIFY_MIN,
+    KEY.ENABLE_WORK_DAYS,
   ]);
   
   // データが存在しない場合はデフォルトデータを作成・保存
@@ -56,6 +77,13 @@ async function loadAll() {
     activeProjectId: saved.activeProjectId,
     breakStart: saved.breakStart || "13:00",
     breakEnd: saved.breakEnd || "14:00",
+    workStart: saved.workStart || "10:00",
+    workEnd: saved.workEnd || "19:00",
+    enableNotifications: saved.enableNotifications || false,
+    enablePreWorkNotification: saved.enablePreWorkNotification !== undefined ? saved.enablePreWorkNotification : true,
+    enableWorkEndNotification: saved.enableWorkEndNotification !== undefined ? saved.enableWorkEndNotification : true,
+    preWorkNotifyMin: saved.preWorkNotifyMin || 15,
+    enableWorkDays: saved.enableWorkDays !== undefined ? saved.enableWorkDays : true,
   };
 }
 
@@ -68,6 +96,13 @@ async function saveAll(data) {
     [KEY.ACTIVE_PROJ]: data.activeProjectId,
     [KEY.BREAK_START]: data.breakStart,
     [KEY.BREAK_END]: data.breakEnd,
+    [KEY.WORK_START]: data.workStart,
+    [KEY.WORK_END]: data.workEnd,
+    [KEY.ENABLE_NOTIFICATIONS]: data.enableNotifications,
+    [KEY.ENABLE_PRE_WORK_NOTIFICATION]: data.enablePreWorkNotification,
+    [KEY.ENABLE_WORK_END_NOTIFICATION]: data.enableWorkEndNotification,
+    [KEY.PRE_WORK_NOTIFY_MIN]: data.preWorkNotifyMin,
+    [KEY.ENABLE_WORK_DAYS]: data.enableWorkDays,
   });
 }
 
@@ -77,6 +112,21 @@ function findActive(teams, tid, pid) {
   const t = teams.find((x) => x.id === tid) || teams[0]; // チームが見つからない場合は最初のチームを使用
   const p = t?.projects?.find((x) => x.id === pid) || t?.projects?.[0]; // プロジェクトが見つからない場合は最初のプロジェクトを使用
   return { team: t, project: p };
+}
+
+// 通知詳細設定の有効/無効を切り替える関数
+// enabledがfalseの場合、詳細設定をグレーアウトし操作不可にする
+function toggleNotificationSettings(enabled) {
+  const detailsContainer = document.getElementById("notificationDetailsContainer");
+  const advancedContainer = document.getElementById("notificationAdvancedContainer");
+  
+  if (enabled) {
+    detailsContainer?.classList.remove("notification-settings-disabled");
+    advancedContainer?.classList.remove("notification-settings-disabled");
+  } else {
+    detailsContainer?.classList.add("notification-settings-disabled");
+    advancedContainer?.classList.add("notification-settings-disabled");
+  }
 }
 
 // チーム存在確認・作成関数
@@ -354,6 +404,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   const saveBreakBtn = document.getElementById("saveBreakTime");       // 休憩時間保存ボタン
   const breakStatus = document.getElementById("breakStatus");          // 休憩設定ステータス表示
 
+  // 出社時間設定関連要素の取得
+  const workStartInput = document.getElementById("workStart");         // 出社時刻入力
+  const workEndInput = document.getElementById("workEnd");             // 退社時刻入力
+  const enableNotificationsInput = document.getElementById("enableNotifications"); // 通知機能有効チェックボックス
+  const enablePreWorkNotificationInput = document.getElementById("enablePreWorkNotification"); // 出社前通知有効チェックボックス
+  const enableWorkEndNotificationInput = document.getElementById("enableWorkEndNotification"); // 退社通知有効チェックボックス
+  const preWorkNotifyMinInput = document.getElementById("preWorkNotifyMin");       // 出社前通知分数入力
+  const enableWorkDaysInput = document.getElementById("enableWorkDays");           // 平日のみ通知チェックボックス
+  const saveWorkHoursBtn = document.getElementById("saveWorkTime");    // 出社時間設定保存ボタン
+  const workTimeStatus = document.getElementById("workTimeStatus");    // 保存ステータス表示
+
   // カスタムセレクトボックス関連要素の取得
   const teamCustomSelect = document.getElementById("teamCustomSelect");       // チーム選択UI
   const teamDropdown = document.getElementById("teamDropdown");               // チームドロップダウン
@@ -384,8 +445,26 @@ document.addEventListener("DOMContentLoaded", async () => {
   breakStartInput.value = data.breakStart;                                   // 休憩開始時刻の設定
   breakEndInput.value = data.breakEnd;                                       // 休憩終了時刻の設定
 
+  // 出社時間設定の初期化
+  workStartInput.value = data.workStart;                                     // 出社時刻の設定
+  workEndInput.value = data.workEnd;                                         // 退社時刻の設定
+  enableNotificationsInput.checked = data.enableNotifications;              // 通知機能有効状態の設定
+  enablePreWorkNotificationInput.checked = data.enablePreWorkNotification;  // 出社前通知有効状態の設定
+  enableWorkEndNotificationInput.checked = data.enableWorkEndNotification;  // 退社通知有効状態の設定
+  preWorkNotifyMinInput.value = data.preWorkNotifyMin;                       // 出社前通知分数の設定
+  enableWorkDaysInput.checked = data.enableWorkDays;                         // 平日のみ通知状態の設定
+
+  // 通知詳細設定の有効/無効状態を設定
+  toggleNotificationSettings(data.enableNotifications);
+
   // カスタムセレクトのグローバルイベントリスナー設定
   setupCustomSelectEventListeners();
+
+  // 通知機能オンオフのイベントハンドラー
+  // チェックボックスの状態変更時に詳細設定の有効/無効を切り替える
+  enableNotificationsInput.addEventListener("change", () => {
+    toggleNotificationSettings(enableNotificationsInput.checked);
+  });
 
   // 各カスタムセレクトのクリックハンドラー設定
   
@@ -534,7 +613,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshSwitchVisibility();
 
     sendProjectSwitch(team.name, proj.name);
-    window.close();
+    
+    // 勤怠ステータスを確認してポップアップを閉じるかどうかを決定
+    const attendanceLogs = loadAttendanceLogs();
+    const statusInfo = getAttendanceStatus(attendanceLogs, data.breakStart, data.breakEnd);
+    
+    // 出勤中または休憩中の場合のみポップアップを閉じる
+    if (statusInfo.status === "working" || statusInfo.status === "break") {
+      window.close();
+    }
+    // 退勤中（status === "off"）の場合はポップアップを開いたまま
   });
 
   // Add team / project (quick)
@@ -665,5 +753,79 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 休憩時間変更時にステータス表示も更新
     const currentLogs = loadAttendanceLogs();
     updateAttendanceStatus(attendanceStatusEl, clockInShortcutBtn, currentLogs, s, e);
+  });
+
+  // 出社時間設定保存ボタンのイベントハンドラー
+  // バリデーション後、設定を保存し、通知スケジュールを更新する
+  saveWorkHoursBtn.addEventListener("click", async () => {
+    const workStart = workStartInput.value;
+    const workEnd = workEndInput.value;
+    const enableNotifications = enableNotificationsInput.checked;
+    const enablePreWorkNotification = enablePreWorkNotificationInput.checked;
+    const enableWorkEndNotification = enableWorkEndNotificationInput.checked;
+    const preWorkNotifyMin = parseInt(preWorkNotifyMinInput.value) || 15;
+    const enableWorkDays = enableWorkDaysInput.checked;
+
+    // バリデーション
+    if (!workStart || !workEnd) {
+      workTimeStatus.textContent = "出社時刻と退社時刻を入力してください";
+      workTimeStatus.style.color = "#f31260";
+      setTimeout(() => { workTimeStatus.textContent = ""; workTimeStatus.style.color = ""; }, 3000);
+      return;
+    }
+    
+    if (workStart >= workEnd) {
+      workTimeStatus.textContent = "出社時刻は退社時刻より前にしてください";
+      workTimeStatus.style.color = "#f31260";
+      setTimeout(() => { workTimeStatus.textContent = ""; workTimeStatus.style.color = ""; }, 3000);
+      return;
+    }
+
+    if (preWorkNotifyMin <= 0 || preWorkNotifyMin > 120) {
+      workTimeStatus.textContent = "出社前通知は1〜120分で設定してください";
+      workTimeStatus.style.color = "#f31260";
+      setTimeout(() => { workTimeStatus.textContent = ""; workTimeStatus.style.color = ""; }, 3000);
+      return;
+    }
+
+    // データ更新
+    data.workStart = workStart;
+    data.workEnd = workEnd;
+    data.enableNotifications = enableNotifications;
+    data.enablePreWorkNotification = enablePreWorkNotification;
+    data.enableWorkEndNotification = enableWorkEndNotification;
+    data.preWorkNotifyMin = preWorkNotifyMin;
+    data.enableWorkDays = enableWorkDays;
+
+    try {
+      // 設定保存
+      await saveAll(data);
+      
+      // background.jsに通知スケジュール更新を送信
+      await chrome.runtime.sendMessage({
+        type: "UPDATE_NOTIFICATION_SCHEDULE",
+        workStart: workStart,
+        workEnd: workEnd,
+        enableNotifications: enableNotifications,
+        enablePreWorkNotification: enablePreWorkNotification,
+        enableWorkEndNotification: enableWorkEndNotification,
+        preWorkNotifyMin: preWorkNotifyMin,
+        enableWorkDays: enableWorkDays,
+      });
+
+      // 保存完了表示
+      workTimeStatus.textContent = "保存しました";
+      workTimeStatus.style.color = "#17c964";
+      setTimeout(() => { 
+        workTimeStatus.textContent = ""; 
+        workTimeStatus.style.color = "";
+      }, 2500);
+
+    } catch (error) {
+      console.error("出社時間設定の保存に失敗しました:", error);
+      workTimeStatus.textContent = "保存に失敗しました。再度お試しください。";
+      workTimeStatus.style.color = "#f31260";
+      setTimeout(() => { workTimeStatus.textContent = ""; workTimeStatus.style.color = ""; }, 3000);
+    }
   });
 });
