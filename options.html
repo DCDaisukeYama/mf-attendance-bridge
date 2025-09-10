@@ -8,19 +8,23 @@
     <!-- 文字エンコーディングをUTF-8に指定 -->
     <title>MF→自動打刻ブリッジ 設定</title>
     <!-- ページタイトル -->
-    <!-- 設定ページ用のCSSスタイル -->
+    <!-- ===== 設定ページ用CSSスタイル定義 ===== -->
+    <!-- レスポンシブ対応とフォーム要素の統一スタイル -->
     <style>
+      /* ベーススタイル：ページ全体のレイアウトとフォント設定 */
       body {
         font-family: system-ui, sans-serif;
         max-width: 860px;
         margin: 24px auto;
         line-height: 1.6;
       }
+      /* フォームラベルのスタイル */
       label {
         display: block;
         font-weight: 600;
         margin-top: 16px;
       }
+      /* 入力フィールドの統一スタイル */
       input[type="text"],
       input[type="url"],
       input[type="number"],
@@ -30,19 +34,23 @@
         padding: 8px;
         box-sizing: border-box;
       }
+      /* 2列レイアウト用グリッドクラス */
       .row {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 16px;
       }
+      /* ヘルプテキスト・説明文用スタイル */
       .hint {
         color: #666;
         font-size: 12px;
       }
+      /* ボタンの基本スタイル */
       button {
         padding: 8px 14px;
         margin-top: 12px;
       }
+      /* 3列レイアウト用グリッドクラス */
       .grid-3 {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr;
@@ -52,43 +60,51 @@
   </head>
   <body>
     <h1>MF→自動打刻ブリッジ 設定</h1>
-    <!-- メインタイトル -->
-    <!-- ブリッジページURL設定 -->
+    <!-- ===== メインタイトル ===== -->
+    <!-- ===== ブリッジページURL設定セクション ===== -->
+    <!-- 勤怠データを受け取るWebページのURL設定 -->
     <label>あなたの勤怠サイト（クエリ受け取りページURL）</label>
     <input
       id="targetPageUrl"
       type="url"
       placeholder="https://example.com/attendance/bridge"
     />
+    <!-- URLパラメータの説明 -->
     <div class="hint">
       ここに
       <code>?action=clock_in|clock_out&timestamp=...</code>
       などのクエリが付いて開かれます。<br />
       ページ側で自動登録＆閉じる等の実装を行ってください。
     </div>
+    <!-- タブ開き方とタイムアウト設定 -->
     <div class="row">
       <div>
+        <!-- バックグラウンドでタブを開くかどうかの設定 -->
         <label>新規タブは非アクティブで開く</label>
         <input id="openInBackground" type="checkbox" />
       </div>
       <div>
+        <!-- ブリッジページの自動クローズ時間設定 -->
         <label>自動クローズ(ms / 0で無効)</label>
         <input id="autoCloseMs" type="number" min="0" step="500" />
       </div>
     </div>
 
     <hr />
-    <!-- セクション区切り線 -->
+    <!-- ===== セクション区切り線 ===== -->
 
-    <!-- 直接API POST設定セクション -->
+    <!-- ===== 直接API POST設定セクション ===== -->
+    <!-- URLを開く代わりに直接APIエンドポイントにPOSTする機能 -->
     <h2>直接POST（任意）</h2>
     <div class="row">
       <div>
+        <!-- 直接POST機能の有効/無効切り替え -->
         <label>直接POSTを有効化</label>
         <input id="enableDirectPost" type="checkbox" />
       </div>
     </div>
 
+    <!-- API エンドポイント設定 -->
     <label>POST 先 API URL</label>
     <input
       id="targetApiUrl"
@@ -96,9 +112,11 @@
       placeholder="https://example.com/api/attendance/log"
     />
 
+    <!-- 認証用APIキー設定 -->
     <label>API キー（Bearer）</label>
     <input id="apiKey" type="password" placeholder="任意（未入力可）" />
 
+    <!-- CORS設定に関する注意事項 -->
     <div class="hint">
       CORS で <code>Access-Control-Allow-Origin</code> に拡張の Origin
       を許可するか、<br />
@@ -106,14 +124,17 @@
     </div>
 
     <hr />
-    <!-- セクション区切り線 -->
+    <!-- ===== セクション区切り線 ===== -->
 
-    <!-- 勤怠ボタン検知の設定セクション -->
+    <!-- ===== 勤怠ボタン検知の設定セクション ===== -->
+    <!-- MoneyForward勤怠画面でのボタン検知ルール設定 -->
     <h2>検知設定</h2>
 
-    <!-- キーワード設定エリア -->
+    <!-- ===== キーワード設定エリア（3列レイアウト） ===== -->
+    <!-- ボタンのテキストから出退勤を判定するためのキーワード設定 -->
     <div class="grid-3">
       <div>
+        <!-- 出勤と判定するキーワードリスト -->
         <label>出勤キーワード（改行区切り）</label>
         <textarea
           id="inKeywords"
@@ -122,6 +143,7 @@
         ></textarea>
       </div>
       <div>
+        <!-- 退勤と判定するキーワードリスト -->
         <label>退勤キーワード（改行区切り）</label>
         <textarea
           id="outKeywords"
@@ -130,14 +152,17 @@
         ></textarea>
       </div>
       <div>
+        <!-- 連続クリック防止用の待機時間設定 -->
         <label>デバウンス(ms)</label>
         <input id="debounceMs" type="number" min="0" step="100" />
       </div>
     </div>
 
-    <!-- CSSセレクタ設定エリア -->
+    <!-- ===== CSSセレクタ設定エリア（3列レイアウト） ===== -->
+    <!-- より具体的なボタン検知のためのCSSセレクタ指定 -->
     <div class="grid-3">
       <div>
+        <!-- 出勤ボタンを特定するCSSセレクタ -->
         <label>出勤ボタン セレクタ（任意・改行区切り）</label>
         <textarea
           id="inSelectors"
@@ -146,6 +171,7 @@
         ></textarea>
       </div>
       <div>
+        <!-- 退勤ボタンを特定するCSSセレクタ -->
         <label>退勤ボタン セレクタ（任意・改行区切り）</label>
         <textarea
           id="outSelectors"
@@ -154,18 +180,23 @@
         ></textarea>
       </div>
       <div>
+        <!-- デバッグ情報の出力設定 -->
         <label>デバッグログ</label>
         <input id="debug" type="checkbox" />
       </div>
     </div>
 
     <hr />
+    <!-- ===== Googleスプレッドシート連携セクション ===== -->
+    <!-- 勤怠データをGoogleスプレッドシートに自動記録する機能 -->
     <h2>Googleスプレッドシート連携</h2>
 
+    <!-- スプレッドシート連携機能の有効化チェックボックス -->
     <label>
       <input id="ssEnabled" type="checkbox" /> スプレッドシートモードを使う
     </label>
 
+    <!-- Googleスプレッドシートの接続設定 -->
     <label>スプレッドシート URL</label>
     <input
       id="ssUrl"
@@ -173,29 +204,35 @@
       placeholder="https://docs.google.com/spreadsheets/d/xxxxxxxxxxxx/edit#gid=0"
     />
 
+    <!-- ポップアップで表示するデフォルトチーム名 -->
     <label>（ポップアップに反映する）チーム名</label>
     <input id="ssTeam" type="text" placeholder="所属チーム" />
 
+    <!-- スプレッドシート読み取り機能の説明 -->
     <div class="hint">
       保存または「読み取りテスト」を押すと、今月のシート（例：<code>2025年8月</code>）の
       <code>B1:R1</code> を読み取り、ポップアップに項目が表示されます。
     </div>
 
+    <!-- スプレッドシート読み取りテスト -->
     <div class="row">
       <button id="btnSsFetch">読み取りテスト</button>
       <span id="ssFetchStatus" class="hint"></span>
     </div>
     
+    <!-- Google Apps Script書き込みテスト -->
     <div class="row">
       <button id="btnGasTest">GAS書き込みテスト</button>
       <span id="gasTestStatus" class="hint"></span>
     </div>
 
+    <!-- ===== 高度な設定：Google Apps Scriptによる書き込み機能 ===== -->
     <details style="margin-top: 8px">
       <summary class="hint">
         （任意・推奨）書き込み用 Apps Script Webアプリ
       </summary>
 
+      <!-- Google Apps Script WebアプリのURL設定 -->
       <label>Webアプリ URL</label>
       <input
         id="ssWriterUrl"
@@ -204,16 +241,19 @@
       />
 
 
+      <!-- GAS書き込み機能の説明 -->
       <div class="hint">
         退勤時に当日行の該当列へ 0.25h 単位で書き込みます。<br />
         Webアプリのコードは本メッセージ末尾の「Apps Script」をそのまま使えます。
       </div>
     </details>
 
-    <!-- 既存の保存ボタンとステータスはそのまま -->
+    <!-- ===== 設定保存セクション ===== -->
+    <!-- 全ての設定を保存するボタンとステータス表示 -->
     <button id="save">保存</button>
     <span id="status" class="hint"></span>
 
+    <!-- JavaScriptファイルの読み込み -->
     <script src="options.js"></script>
   </body>
 </html>
