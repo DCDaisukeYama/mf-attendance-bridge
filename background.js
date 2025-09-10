@@ -719,8 +719,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         await setSeg({ start: timestamp, team, project });
       } else if (action === "project_switch") {
         const prev = await getSeg();
-        if (prev) await finalizeSegment(timestamp, prev);
-        await setSeg({ start: timestamp, team, project });
+        if (prev) {
+          // 出勤中の場合のみログを残し、セグメントを更新
+          await finalizeSegment(timestamp, prev);
+          await setSeg({ start: timestamp, team, project });
+          
+          // ブリッジページを開く
+          if (settings.targetPageUrl) {
+            const url = buildUrlWithParams(settings.targetPageUrl, payload);
+            await openBridge(url);
+          }
+        } else {
+          // 退勤中の場合はログを残さない（popup.jsでの切替のみ実行）
+          log("Project switch during off-duty - no log created, popup switch only");
+        }
       } else if (action === "clock_out") {
         const prev = await getSeg();
         if (prev) await finalizeSegment(timestamp, prev);
@@ -729,6 +741,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
 
     // ---- 既存動作（任意の API POST / bridge.html オープン）----
+    // project_switch時に退勤中の場合はブリッジページを開かない
+    if (action === "project_switch") {
+      const currentSeg = await getSeg();
+      if (!currentSeg) {
+        log("Project switch during off-duty - bridge.html will not be opened");
+        return; // 早期リターンでブリッジページ開封とAPI送信をスキップ
+      }
+    }
+    
     let ok = false;
     if (settings.enableDirectPost && settings.targetApiUrl) {
       try {

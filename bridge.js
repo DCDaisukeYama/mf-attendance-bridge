@@ -848,6 +848,43 @@ document.addEventListener("DOMContentLoaded", async () => {
        </div>`
     : `<span class="muted">まだ記録がありません</span>`;
 
+  // ===== 本日合計の計算 =====
+  function computeTodayTotals(pairs) {
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
+
+    let todayPreciseMs = 0;
+    let todayRoundedMs = 0;
+    const todayProjects = {};
+
+    for (const p of pairs) {
+      const outTime = new Date(p.outTime);
+      if (outTime >= todayStart && outTime < todayEnd) {
+        todayPreciseMs += p.actualMs || p.diffMs;
+        todayRoundedMs += p.quarterHours * 15 * 60 * 1000;
+        
+        // プロジェクト別集計
+        const projectKey = p.project || "不明";
+        if (!todayProjects[projectKey]) {
+          todayProjects[projectKey] = { preciseMs: 0, roundedMs: 0 };
+        }
+        todayProjects[projectKey].preciseMs += p.actualMs || p.diffMs;
+        todayProjects[projectKey].roundedMs += p.quarterHours * 15 * 60 * 1000;
+      }
+    }
+
+    return {
+      preciseMs: todayPreciseMs,
+      preciseText: formatPreciseHMS(todayPreciseMs),
+      roundedMs: todayRoundedMs,
+      roundedHoursText: (todayRoundedMs / (1000 * 60 * 60)).toFixed(2),
+      roundedMin: Math.floor(todayRoundedMs / 60000),
+      projects: todayProjects
+    };
+  }
+
   // ===== 集計 & テーブル描画 =====
   async function render() {
     tableBody.innerHTML = "";
@@ -873,6 +910,35 @@ document.addEventListener("DOMContentLoaded", async () => {
            totals.month.roundedHoursText
          }時間</b>（${totals.month.roundedMin}分）</span>
        </div>`;
+
+    // 本日合計（右カード）
+    const todayTotals = computeTodayTotals(pairs);
+    const todayTotalsHost = document.getElementById("todayTotals");
+    if (todayTotals.preciseMs === 0) {
+      todayTotalsHost.innerHTML = `<div class="muted">今日はまだ勤務記録がありません</div>`;
+    } else {
+      let projectsHtml = "";
+      const projectEntries = Object.entries(todayTotals.projects);
+      if (projectEntries.length > 0) {
+        projectsHtml = `<div style="margin-top:8px">
+          <div class="muted" style="font-size:11px;margin-bottom:4px">プロジェクト別:</div>
+          ${projectEntries.map(([project, data]) => 
+            `<div class="row" style="gap:8px;font-size:11px;margin-bottom:2px">
+              <span style="min-width:60px;font-weight:500">${project}:</span>
+              <span>${formatPreciseHMS(data.preciseMs)} (${(data.roundedMs / (1000 * 60 * 60)).toFixed(2)}h)</span>
+            </div>`
+          ).join('')}
+        </div>`;
+      }
+      
+      todayTotalsHost.innerHTML = `
+        <div class="row" style="gap:12px;flex-wrap:wrap">
+          <span class="small">正確: <b>${todayTotals.preciseText}</b>（${Math.floor(todayTotals.preciseMs / 60000)}分）</span>
+          <span class="small">0.25h: <b>${todayTotals.roundedHoursText}時間</b>（${todayTotals.roundedMin}分）</span>
+        </div>
+        ${projectsHtml}
+      `;
+    }
 
     // ログ（新しい順）
     const rows = [...logs].reverse();

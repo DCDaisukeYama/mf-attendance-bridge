@@ -534,7 +534,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     refreshSwitchVisibility();
 
     sendProjectSwitch(team.name, proj.name);
-    window.close();
+    
+    // 勤怠ステータスを確認してポップアップを閉じるかどうかを決定
+    const attendanceLogs = loadAttendanceLogs();
+    const statusInfo = getAttendanceStatus(attendanceLogs, data.breakStart, data.breakEnd);
+    
+    // 出勤中または休憩中の場合のみポップアップを閉じる
+    if (statusInfo.status === "working" || statusInfo.status === "break") {
+      window.close();
+    }
+    // 退勤中（status === "off"）の場合はポップアップを開いたまま
   });
 
   // Add team / project (quick)
