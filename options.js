@@ -257,6 +257,12 @@ async function save() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  load();
-  document.getElementById("save").addEventListener("click", save);
+  load();  // 保存済み設定をUIに設定
+  document.getElementById("save").addEventListener("click", save); // 保存ボタンのイベントリスナー
 });
+
+// 設定ページの機能すべてが上記の関数で実装されています
+// - dynamicDefaults(): デフォルト設定の生成
+// - extractSheetId(), monthSheetName(), fetchHeaderBR1Csv(): スプレッドシート操作
+// - load(): 保存済み設定のUIへの反映とテストボタンのイベント設定
+// - save(): UIからの設定収集とストレージへの保存
