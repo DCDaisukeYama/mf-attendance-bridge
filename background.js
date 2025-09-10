@@ -695,6 +695,51 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // async
   }
 
+  // 通知スケジュール更新ハンドラー
+  if (msg?.type === "UPDATE_NOTIFICATION_SCHEDULE") {
+    (async () => {
+      try {
+        const { 
+          workStart, 
+          workEnd, 
+          enableNotifications,
+          enablePreWorkNotification,
+          enableWorkEndNotification,
+          preWorkNotifyMin, 
+          enableWorkDays 
+        } = msg;
+        
+        log("Updating notification schedule:", {
+          workStart, workEnd, enableNotifications, 
+          enablePreWorkNotification, enableWorkEndNotification,
+          preWorkNotifyMin, enableWorkDays
+        });
+
+        // 既存のアラームをクリア
+        await chrome.alarms.clearAll();
+        
+        if (enableNotifications) {
+          // 新しいアラームを設定
+          await scheduleWorkNotifications(
+            workStart, 
+            workEnd, 
+            preWorkNotifyMin, 
+            enableWorkDays,
+            enablePreWorkNotification,
+            enableWorkEndNotification
+          );
+        }
+        
+        sendResponse({ ok: true });
+      } catch (error) {
+        log("Error updating notification schedule:", error);
+        sendResponse({ ok: false, error: error.message });
+      }
+    })();
+    
+    return true; // async
+  }
+
   if (msg?.type !== "MF_BRIDGE_EVENT") return;
 
   (async () => {
@@ -784,4 +829,279 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   })();
 
   return true; // async
+});
+
+// ===== 通知システム =====
+
+// 出社時間通知のスケジューリング関数
+// 指定された出社・退社時間に基づいてアラームを設定する
+async function scheduleWorkNotifications(workStart, workEnd, preWorkNotifyMin, enableWorkDays, enablePreWorkNotification, enableWorkEndNotification) {
+  log("Scheduling work notifications:", { 
+    workStart, workEnd, preWorkNotifyMin, enableWorkDays,
+    enablePreWorkNotification, enableWorkEndNotification
+  });
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  try {
+    // 出社前通知の設定
+    if (enablePreWorkNotification) {
+      const [workStartHour, workStartMin] = workStart.split(':').map(Number);
+      const preWorkTime = new Date(today);
+      preWorkTime.setHours(workStartHour, workStartMin - preWorkNotifyMin, 0, 0);
+
+      // 今日の通知が既に過ぎている場合は明日に設定
+      if (preWorkTime <= now) {
+        preWorkTime.setDate(preWorkTime.getDate() + 1);
+      }
+
+      await chrome.alarms.create("PRE_WORK_NOTIFICATION", {
+        when: preWorkTime.getTime()
+      });
+      
+      log("Pre-work alarm created:", preWorkTime.toLocaleString('ja-JP'));
+    }
+
+    // 退社時通知の設定
+    if (enableWorkEndNotification) {
+      const [workEndHour, workEndMin] = workEnd.split(':').map(Number);
+      const workEndTime = new Date(today);
+      workEndTime.setHours(workEndHour, workEndMin, 0, 0);
+
+      // 今日の通知が既に過ぎている場合は明日に設定
+      if (workEndTime <= now) {
+        workEndTime.setDate(workEndTime.getDate() + 1);
+      }
+
+      await chrome.alarms.create("WORK_END_NOTIFICATION", {
+        when: workEndTime.getTime()
+      });
+      
+      log("Work end alarm created:", workEndTime.toLocaleString('ja-JP'));
+    }
+
+  } catch (error) {
+    log("Error creating alarms:", error);
+  }
+}
+
+// 平日判定関数（月曜日=1, 日曜日=0）
+function isWeekday(date) {
+  const day = date.getDay();
+  return day >= 1 && day <= 5; // 月曜日〜金曜日
+}
+
+// MoneyForwardのURLを取得する関数
+async function getMoneyForwardUrl() {
+  try {
+    // 設定からMFのURLを取得（options.jsで設定されているURL）
+    const result = await chrome.storage.sync.get(['mfBaseUrl']);
+    if (result.mfBaseUrl && result.mfBaseUrl.trim()) {
+      return result.mfBaseUrl.trim();
+    }
+  } catch (error) {
+    log("Error getting MoneyForward URL from settings:", error);
+  }
+  
+  // デフォルトのMoneyForward勤怠URL
+  return "https://attendance.moneyforward.com/my_page";
+}
+
+// アラーム発火時の処理
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  log("Alarm fired:", alarm.name);
+
+  try {
+    // 設定を読み込み
+    const settings = await chrome.storage.sync.get([
+      'enableNotifications',
+      'enablePreWorkNotification',
+      'enableWorkEndNotification',
+      'enableWorkDays',
+      'workStart',
+      'workEnd',
+      'preWorkNotifyMin'
+    ]);
+
+    // 通知が無効化されている場合は何もしない
+    if (!settings.enableNotifications) {
+      log("Notifications disabled, skipping");
+      return;
+    }
+
+    // 平日のみ通知が有効で、今日が休日の場合はスキップ
+    if (settings.enableWorkDays && !isWeekday(new Date())) {
+      log("Weekday-only notifications enabled, but today is weekend, skipping");
+      // 明日のアラームを設定
+      await scheduleWorkNotifications(
+        settings.workStart, 
+        settings.workEnd, 
+        settings.preWorkNotifyMin, 
+        settings.enableWorkDays
+      );
+      return;
+    }
+
+    const mfUrl = await getMoneyForwardUrl();
+
+    if (alarm.name === "PRE_WORK_NOTIFICATION") {
+      // 出社前通知の個別設定チェック
+      if (!settings.enablePreWorkNotification) {
+        log("Pre-work notification disabled, skipping");
+        return;
+      }
+      
+      const minBefore = settings.preWorkNotifyMin || 15;
+      await chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: '出勤時間のお知らせ',
+        message: `${minBefore}分後に出社時刻です。出勤の準備をお忘れなく！`,
+        buttons: [
+          { title: 'MoneyForwardを開く' },
+          { title: '後で通知' }
+        ]
+      });
+
+    } else if (alarm.name === "WORK_END_NOTIFICATION") {
+      // 退社通知の個別設定チェック
+      if (!settings.enableWorkEndNotification) {
+        log("Work end notification disabled, skipping");
+        return;
+      }
+      
+      await chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png', 
+        title: '退社時間のお知らせ',
+        message: '退社時刻になりました。お疲れさまでした！',
+        buttons: [
+          { title: 'MoneyForwardを開く' },
+          { title: 'スヌーズ' }
+        ]
+      });
+    }
+
+    // 翌日のアラームを設定
+    await scheduleWorkNotifications(
+      settings.workStart, 
+      settings.workEnd, 
+      settings.preWorkNotifyMin, 
+      settings.enableWorkDays,
+      settings.enablePreWorkNotification,
+      settings.enableWorkEndNotification
+    );
+
+  } catch (error) {
+    log("Error in alarm handler:", error);
+  }
+});
+
+// 通知クリック時の処理
+chrome.notifications.onClicked.addListener(async (notificationId) => {
+  log("Notification clicked:", notificationId);
+  
+  try {
+    const mfUrl = await getMoneyForwardUrl();
+    // MoneyForwardを新しいタブで開く
+    await chrome.tabs.create({ url: mfUrl });
+    
+    // 通知を削除
+    await chrome.notifications.clear(notificationId);
+  } catch (error) {
+    log("Error handling notification click:", error);
+  }
+});
+
+// 通知ボタンクリック時の処理
+chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIndex) => {
+  log("Notification button clicked:", notificationId, buttonIndex);
+
+  try {
+    if (buttonIndex === 0) {
+      // MoneyForwardを開く
+      const mfUrl = await getMoneyForwardUrl();
+      await chrome.tabs.create({ url: mfUrl });
+      await chrome.notifications.clear(notificationId);
+
+    } else if (buttonIndex === 1) {
+      // スヌーズまたは後で通知
+      await chrome.notifications.clear(notificationId);
+      
+      // スヌーズメニューを表示する代わりに、デフォルトで5分後に再通知
+      const snoozeMinutes = 5;
+      const snoozeTime = Date.now() + (snoozeMinutes * 60 * 1000);
+      
+      await chrome.alarms.create(`SNOOZE_${Date.now()}`, {
+        when: snoozeTime
+      });
+      
+      // スヌーズ通知を作成
+      await chrome.notifications.create({
+        type: 'basic',
+        iconUrl: 'icons/icon48.png',
+        title: 'スヌーズ設定完了',
+        message: `${snoozeMinutes}分後に再度通知します。`
+      });
+    }
+  } catch (error) {
+    log("Error handling notification button click:", error);
+  }
+});
+
+// 拡張機能の初期化時に通知スケジュールを設定
+chrome.runtime.onStartup.addListener(async () => {
+  try {
+    const settings = await chrome.storage.sync.get([
+      'workStart',
+      'workEnd', 
+      'enableNotifications',
+      'enablePreWorkNotification',
+      'enableWorkEndNotification',
+      'preWorkNotifyMin',
+      'enableWorkDays'
+    ]);
+
+    if (settings.enableNotifications && settings.workStart && settings.workEnd) {
+      await scheduleWorkNotifications(
+        settings.workStart,
+        settings.workEnd,
+        settings.preWorkNotifyMin || 15,
+        settings.enableWorkDays !== false,
+        settings.enablePreWorkNotification !== false,
+        settings.enableWorkEndNotification !== false
+      );
+    }
+  } catch (error) {
+    log("Error initializing notifications on startup:", error);
+  }
+});
+
+// インストール時の初期化
+chrome.runtime.onInstalled.addListener(async () => {
+  try {
+    const settings = await chrome.storage.sync.get([
+      'workStart',
+      'workEnd',
+      'enableNotifications',
+      'enablePreWorkNotification',
+      'enableWorkEndNotification',
+      'preWorkNotifyMin',
+      'enableWorkDays'
+    ]);
+
+    if (settings.enableNotifications && settings.workStart && settings.workEnd) {
+      await scheduleWorkNotifications(
+        settings.workStart,
+        settings.workEnd,
+        settings.preWorkNotifyMin || 15,
+        settings.enableWorkDays !== false,
+        settings.enablePreWorkNotification !== false,
+        settings.enableWorkEndNotification !== false
+      );
+    }
+  } catch (error) {
+    log("Error initializing notifications on install:", error);
+  }
 });

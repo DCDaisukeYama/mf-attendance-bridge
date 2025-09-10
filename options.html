@@ -253,6 +253,18 @@
     <button id="save">保存</button>
     <span id="status" class="hint"></span>
 
+    <!-- ===== 通知テストセクション ===== -->
+    <!-- 出社・退社通知のテスト機能 -->
+    <hr style="margin: 32px 0 16px; border: 0; border-top: 1px solid #ddd;">
+    <h3 style="margin-bottom: 12px;">通知テスト</h3>
+    <p class="hint">ポップアップで設定した通知設定をテストできます。</p>
+    
+    <div style="display: flex; gap: 12px; margin-bottom: 8px;">
+      <button id="testPreWorkNotification">出社前通知テスト</button>
+      <button id="testWorkEndNotification">退社通知テスト</button>
+    </div>
+    <div id="notificationTestStatus" class="hint" style="color: #666;"></div>
+
     <!-- JavaScriptファイルの読み込み -->
     <script src="options.js"></script>
   </body>

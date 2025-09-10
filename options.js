@@ -256,9 +256,84 @@ async function save() {
   setTimeout(() => (s.textContent = ""), 1200);
 }
 
+// 通知テスト関数
+// 出社前通知のテストを行う
+async function testPreWorkNotification() {
+  const notificationTestStatus = document.getElementById("notificationTestStatus");
+  
+  try {
+    notificationTestStatus.textContent = "出社前通知をテスト中...";
+    
+    // 設定から出社前通知の分数を取得
+    const settings = await chrome.storage.sync.get(['preWorkNotifyMin']);
+    const minBefore = settings.preWorkNotifyMin || 15;
+    
+    // テスト通知を作成
+    await chrome.notifications.create(`TEST_PRE_WORK_${Date.now()}`, {
+      type: 'basic',
+      iconUrl: 'icons/icon48.png',
+      title: '【テスト】出勤時間のお知らせ',
+      message: `${minBefore}分後に出社時刻です。出勤の準備をお忘れなく！（これはテスト通知です）`,
+      buttons: [
+        { title: 'MoneyForwardを開く' },
+        { title: '後で通知' }
+      ]
+    });
+    
+    notificationTestStatus.textContent = "出社前通知のテストが完了しました";
+    setTimeout(() => {
+      notificationTestStatus.textContent = "";
+    }, 3000);
+    
+  } catch (error) {
+    console.error("出社前通知テストでエラーが発生しました:", error);
+    notificationTestStatus.textContent = "テストでエラーが発生しました";
+    setTimeout(() => {
+      notificationTestStatus.textContent = "";
+    }, 3000);
+  }
+}
+
+// 退社通知のテストを行う  
+async function testWorkEndNotification() {
+  const notificationTestStatus = document.getElementById("notificationTestStatus");
+  
+  try {
+    notificationTestStatus.textContent = "退社通知をテスト中...";
+    
+    // テスト通知を作成
+    await chrome.notifications.create(`TEST_WORK_END_${Date.now()}`, {
+      type: 'basic',
+      iconUrl: 'icons/icon48.png',
+      title: '【テスト】退社時間のお知らせ',
+      message: '退社時刻になりました。お疲れさまでした！（これはテスト通知です）',
+      buttons: [
+        { title: 'MoneyForwardを開く' },
+        { title: 'スヌーズ' }
+      ]
+    });
+    
+    notificationTestStatus.textContent = "退社通知のテストが完了しました";
+    setTimeout(() => {
+      notificationTestStatus.textContent = "";
+    }, 3000);
+    
+  } catch (error) {
+    console.error("退社通知テストでエラーが発生しました:", error);
+    notificationTestStatus.textContent = "テストでエラーが発生しました";
+    setTimeout(() => {
+      notificationTestStatus.textContent = "";
+    }, 3000);
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   load();  // 保存済み設定をUIに設定
   document.getElementById("save").addEventListener("click", save); // 保存ボタンのイベントリスナー
+  
+  // 通知テストボタンのイベントリスナー追加
+  document.getElementById("testPreWorkNotification")?.addEventListener("click", testPreWorkNotification);
+  document.getElementById("testWorkEndNotification")?.addEventListener("click", testWorkEndNotification);
 });
 
 // 設定ページの機能すべてが上記の関数で実装されています
@@ -266,3 +341,4 @@ window.addEventListener("DOMContentLoaded", () => {
 // - extractSheetId(), monthSheetName(), fetchHeaderBR1Csv(): スプレッドシート操作
 // - load(): 保存済み設定のUIへの反映とテストボタンのイベント設定
 // - save(): UIからの設定収集とストレージへの保存
+// - testPreWorkNotification(), testWorkEndNotification(): 通知テスト機能
