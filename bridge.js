@@ -269,6 +269,55 @@ async function buildWorkSegments(logs) {
   return segments;
 }
 
+// 同じ日の同じプロジェクトのセグメントを累積する
+function consolidateSegmentsByProject(segments) {
+  const consolidated = {};
+  
+  for (const segment of segments) {
+    // 日付を取得（JST）
+    const endDate = new Date(segment.endLog.timestamp);
+    const dateKey = endDate.toLocaleDateString('ja-JP', { 
+      year: 'numeric', 
+      month: '2-digit', 
+      day: '2-digit' 
+    }).replace(/\//g, '-'); // YYYY-MM-DD形式
+    
+    const key = `${dateKey}_${segment.project}`;
+    
+    if (!consolidated[key]) {
+      consolidated[key] = {
+        ...segment,
+        segments: [segment], // 元のセグメントを保持
+        totalActualMs: segment.actualMs,
+        totalDiffMs: segment.diffMs,
+        totalBreakOverlapMs: segment.breakOverlapMs
+      };
+      console.log(`新規作成: ${key}, actualMs: ${segment.actualMs}ms`);
+    } else {
+      // 累積処理
+      const prevTotal = consolidated[key].totalActualMs;
+      consolidated[key].segments.push(segment);
+      consolidated[key].totalActualMs += segment.actualMs;
+      consolidated[key].totalDiffMs += segment.diffMs;
+      consolidated[key].totalBreakOverlapMs += segment.breakOverlapMs;
+      
+      console.log(`累積: ${key}, 前回: ${prevTotal}ms + 今回: ${segment.actualMs}ms = 合計: ${consolidated[key].totalActualMs}ms`);
+      
+      // 最初のstartLogを保持（最早の開始時刻）
+      if (new Date(segment.startLog.timestamp) < new Date(consolidated[key].startLog.timestamp)) {
+        consolidated[key].startLog = segment.startLog;
+      }
+      
+      // 最後のendLogを更新（最新の終了時刻を保持）
+      if (new Date(segment.endLog.timestamp) > new Date(consolidated[key].endLog.timestamp)) {
+        consolidated[key].endLog = segment.endLog;
+      }
+    }
+  }
+  
+  return Object.values(consolidated);
+}
+
 // 休憩時間を考慮したスプレッドシート再書き込み機能
 async function rewriteSheetWithBreakTime(logs) {
   const rewriteStatusEl = document.getElementById("rewriteStatus");
@@ -277,18 +326,27 @@ async function rewriteSheetWithBreakTime(logs) {
     rewriteStatusEl.textContent = "休憩時間を考慮した再書き込み処理を開始しています...";
     
     // プロジェクト切替を考慮した作業セグメントを作成
-    const segments = await buildWorkSegments(logs);
+    const rawSegments = await buildWorkSegments(logs);
     
-    if (segments.length === 0) {
+    if (rawSegments.length === 0) {
       rewriteStatusEl.textContent = "再書き込み対象のデータがありません";
       setTimeout(() => rewriteStatusEl.textContent = "", 3000);
       return;
     }
 
+    // 同じ日の同じプロジェクトのセグメントを累積
+    const segments = consolidateSegmentsByProject(rawSegments);
+    
+    console.log(`累積処理: ${rawSegments.length}個のセグメントから${segments.length}個の累積セグメントを作成`, segments);
+
     let successCount = 0;
     let errorCount = 0;
     
-    rewriteStatusEl.textContent = `${segments.length}件のセグメントを処理中...`;
+    if (rawSegments.length !== segments.length) {
+      rewriteStatusEl.textContent = `${rawSegments.length}個のセグメントを${segments.length}個に累積して処理中...`;
+    } else {
+      rewriteStatusEl.textContent = `${segments.length}件のセグメントを処理中...`;
+    }
     
     // セグメント再書き込みのリトライ機能付き関数
     const rewriteSegmentWithRetry = async (segment, maxRetries = 3) => {
@@ -304,7 +362,7 @@ async function rewriteSheetWithBreakTime(logs) {
                   outTime: segment.endLog.timestamp,
                   team: segment.team,
                   project: segment.project,
-                  actualMs: segment.actualMs // 休憩時間を考慮した実際の勤務時間
+                  actualMs: segment.totalActualMs // 累積された休憩時間を考慮した実際の勤務時間
                 }
               };
               
@@ -374,12 +432,15 @@ async function rewriteSheetWithBreakTime(logs) {
     }
     
     // 結果表示
+    const accumulationText = rawSegments.length !== segments.length ? 
+      ` (${rawSegments.length}個のセグメントから累積)` : '';
+    
     if (errorCount === 0) {
-      rewriteStatusEl.textContent = `✓ 再書き込み完了: ${successCount}件のデータを処理しました`;
+      rewriteStatusEl.textContent = `✓ 再書き込み完了: ${successCount}件のプロジェクトデータを処理${accumulationText}`;
       rewriteStatusEl.className = "small";
       rewriteStatusEl.style.color = "var(--ok)";
     } else {
-      rewriteStatusEl.textContent = `⚠ 再書き込み完了: 成功 ${successCount}件, 失敗 ${errorCount}件`;
+      rewriteStatusEl.textContent = `⚠ 再書き込み完了: 成功 ${successCount}件, 失敗 ${errorCount}件${accumulationText}`;
       rewriteStatusEl.className = "small";
       rewriteStatusEl.style.color = "var(--warn)";
     }

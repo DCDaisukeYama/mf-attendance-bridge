@@ -538,7 +538,7 @@ async function finalizeSegment(endIso, prevSeg) {
 
 // 休憩時間を考慮した値で直接スプレッドシートに書き込み（上書き）
 async function rewriteSheetWithBreakTime({ endIso, projectName, actualValueDecimal }) {
-  log("rewriteSheetWithBreakTime called with:", { endIso, projectName, actualValueDecimal });
+  log("rewriteSheetWithBreakTime called with:", { endIso, projectName, actualValueDecimal: actualValueDecimal });
 
   try {
     if (!settings.sheetMode) {
@@ -605,7 +605,7 @@ async function rewriteSheetWithBreakTime({ endIso, projectName, actualValueDecim
       spreadsheetId,
       sheetName,
       row,
-      values: [{ col: letter, value: actualValueDecimal }], // 休憩時間考慮済みの値で上書き
+      values: [{ col: letter, value: actualValueDecimal }], // 累積された休憩時間考慮済みの値で上書き
       operation: "rewrite", // 再書き込みモードを指定
       rewrite: true // 後方互換性のため
     };
