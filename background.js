@@ -517,6 +517,100 @@ async function clearSeg() {
   await chrome.storage.local.remove([SEG_KEY]);
 }
 
+// 休憩時間を考慮した実労働時間を計算
+async function calculateActualWorkingTime(startIso, endIso, originalMs) {
+  try {
+    // 休憩時間設定を取得
+    const breakSettings = await chrome.storage.sync.get([
+      "breakStart",
+      "breakEnd",
+    ]);
+    const breakStart = breakSettings.breakStart || "13:00";
+    const breakEnd = breakSettings.breakEnd || "14:00";
+
+    // 休憩時間の重複を計算（bridge.jsのcalculateBreakOverlap関数と同等の処理）
+    const breakOverlapMs = calculateBreakOverlap(startIso, endIso, breakStart, breakEnd);
+    
+    // 実労働時間（休憩時間を除外）
+    const actualMs = originalMs - breakOverlapMs;
+    
+    log("Working time calculation:", { 
+      startIso, endIso, originalMs, breakStart, breakEnd, breakOverlapMs, actualMs 
+    });
+    
+    return Math.max(0, actualMs); // 負の値にならないように調整
+  } catch (error) {
+    log("Error calculating actual working time:", error);
+    return originalMs; // エラー時は元の時間を返す
+  }
+}
+
+// 休憩時間の重複する時間を計算（ミリ秒）- bridge.jsと同等の関数
+function calculateBreakOverlap(inTime, outTime, breakStart, breakEnd) {
+  if (!breakStart || !breakEnd) return 0;
+
+  // ISOタイムスタンプをJSTのDateオブジェクトに変換
+  const inDate = new Date(inTime);
+  const outDate = new Date(outTime);
+
+  // JSTでの日付を取得（Intl.DateTimeFormatを使用して正確な日付を取得）
+  const inJstDateStr = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(inDate);
+  
+  const outJstDateStr = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo", 
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(outDate);
+
+  // 同一日の場合のみ休憩時間を考慮
+  if (inJstDateStr !== outJstDateStr) return 0;
+
+  // 時刻文字列をパース（HH:MM形式）
+  const [breakStartHour, breakStartMin] = breakStart.split(":").map(Number);
+  const [breakEndHour, breakEndMin] = breakEnd.split(":").map(Number);
+
+  // JSTでの出勤・退勤時刻を取得
+  const inJstTimeStr = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(inDate);
+  
+  const outJstTimeStr = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    hour: "2-digit", 
+    minute: "2-digit",
+    hour12: false
+  }).format(outDate);
+
+  const [inHour, inMin] = inJstTimeStr.split(":").map(Number);
+  const [outHour, outMin] = outJstTimeStr.split(":").map(Number);
+
+  // 分単位で計算（より正確な比較のため）
+  const inMinutes = inHour * 60 + inMin;
+  const outMinutes = outHour * 60 + outMin;
+  const breakStartMinutes = breakStartHour * 60 + breakStartMin;
+  const breakEndMinutes = breakEndHour * 60 + breakEndMin;
+
+  // 重複する時間を分単位で計算
+  const overlapStartMinutes = Math.max(inMinutes, breakStartMinutes);
+  const overlapEndMinutes = Math.min(outMinutes, breakEndMinutes);
+
+  // 重複がある場合はその時間をミリ秒で返す
+  if (overlapEndMinutes > overlapStartMinutes) {
+    return (overlapEndMinutes - overlapStartMinutes) * 60 * 1000;
+  }
+  
+  return 0;
+}
+
 // 区間を確定して GAS に書く
 async function finalizeSegment(endIso, prevSeg) {
   if (!prevSeg?.start || !prevSeg.project)
@@ -525,14 +619,17 @@ async function finalizeSegment(endIso, prevSeg) {
   const ms = new Date(endIso) - new Date(prevSeg.start);
   if (!(ms > 0)) return { ok: false, reason: "invalid ms" };
 
-  const val = quarterHoursDecimal(ms);
+  // 休憩時間を考慮した実労働時間を計算
+  const actualMs = await calculateActualWorkingTime(prevSeg.start, endIso, ms);
+  const val = quarterHoursDecimal(actualMs);
+  
   const res = await postToGAS({
     endIso,
     projectName: prevSeg.project,
     valueDecimal: val,
   });
 
-  log("GAS write:", { project: prevSeg.project, endIso, val, res });
+  log("GAS write:", { project: prevSeg.project, endIso, originalMs: ms, actualMs, val, res });
   return res;
 }
 
