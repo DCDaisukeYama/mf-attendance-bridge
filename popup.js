@@ -16,6 +16,7 @@ const KEY = {
   ENABLE_WORK_END_NOTIFICATION: "enableWorkEndNotification", // 退社通知有効フラグ
   PRE_WORK_NOTIFY_MIN: "preWorkNotifyMin",     // 出社前通知（分前）
   ENABLE_WORK_DAYS: "enableWorkDays",         // 平日のみ通知フラグ
+  ENABLE_STARTUP_ANIMATION: "enableStartupAnimation", // 起動アニメーション有効フラグ
 };
 
 // デフォルトデータ生成関数
@@ -42,6 +43,7 @@ function defaultData() {
     enableWorkEndNotification: true,  // 退社通知デフォルト有効
     preWorkNotifyMin: 15,         // 出社前通知デフォルト15分前
     enableWorkDays: true,         // 平日のみ通知デフォルト有効
+    enableStartupAnimation: true, // 起動アニメーションデフォルト有効
   };
 }
 
@@ -61,6 +63,7 @@ async function loadAll() {
     KEY.ENABLE_WORK_END_NOTIFICATION,
     KEY.PRE_WORK_NOTIFY_MIN,
     KEY.ENABLE_WORK_DAYS,
+    KEY.ENABLE_STARTUP_ANIMATION,
   ]);
   
   // データが存在しない場合はデフォルトデータを作成・保存
@@ -84,6 +87,7 @@ async function loadAll() {
     enableWorkEndNotification: saved.enableWorkEndNotification !== undefined ? saved.enableWorkEndNotification : true,
     preWorkNotifyMin: saved.preWorkNotifyMin || 15,
     enableWorkDays: saved.enableWorkDays !== undefined ? saved.enableWorkDays : true,
+    enableStartupAnimation: saved.enableStartupAnimation !== undefined ? saved.enableStartupAnimation : true,
   };
 }
 
@@ -103,6 +107,7 @@ async function saveAll(data) {
     [KEY.ENABLE_WORK_END_NOTIFICATION]: data.enableWorkEndNotification,
     [KEY.PRE_WORK_NOTIFY_MIN]: data.preWorkNotifyMin,
     [KEY.ENABLE_WORK_DAYS]: data.enableWorkDays,
+    [KEY.ENABLE_STARTUP_ANIMATION]: data.enableStartupAnimation,
   });
 }
 
@@ -551,6 +556,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const enableWorkDaysInput = document.getElementById("enableWorkDays");           // 平日のみ通知チェックボックス
   const saveWorkHoursBtn = document.getElementById("saveWorkTime");    // 出社時間設定保存ボタン
   const workTimeStatus = document.getElementById("workTimeStatus");    // 保存ステータス表示
+  
+  // 表示設定関連の要素
+  const enableStartupAnimationInput = document.getElementById("enableStartupAnimation"); // 起動アニメーション有効チェックボックス
+  const saveDisplaySettingsBtn = document.getElementById("saveDisplaySettings");  // 表示設定保存ボタン
+  const displaySettingsStatus = document.getElementById("displaySettingsStatus");  // 表示設定保存ステータス表示
 
   // カスタムセレクトボックス関連要素の取得
   const teamCustomSelect = document.getElementById("teamCustomSelect");       // チーム選択UI
@@ -590,6 +600,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   enableWorkEndNotificationInput.checked = data.enableWorkEndNotification;  // 退社通知有効状態の設定
   preWorkNotifyMinInput.value = data.preWorkNotifyMin;                       // 出社前通知分数の設定
   enableWorkDaysInput.checked = data.enableWorkDays;                         // 平日のみ通知状態の設定
+
+  // 表示設定の初期化
+  enableStartupAnimationInput.checked = data.enableStartupAnimation;         // 起動アニメーション有効状態の設定
+
+  // 起動アニメーション制御
+  const splashScreen = document.getElementById("splash");
+  if (!data.enableStartupAnimation && splashScreen) {
+    splashScreen.style.display = "none";
+  }
 
   // 通知詳細設定の有効/無効状態を設定
   toggleNotificationSettings(data.enableNotifications);
@@ -1003,6 +1022,33 @@ document.addEventListener("DOMContentLoaded", async () => {
       workTimeStatus.textContent = "保存に失敗しました。再度お試しください。";
       workTimeStatus.style.color = "#f31260";
       setTimeout(() => { workTimeStatus.textContent = ""; workTimeStatus.style.color = ""; }, 3000);
+    }
+  });
+
+  // 表示設定保存ボタンのイベントハンドラー
+  saveDisplaySettingsBtn.addEventListener("click", async () => {
+    const enableStartupAnimation = enableStartupAnimationInput.checked;
+
+    // データ更新
+    data.enableStartupAnimation = enableStartupAnimation;
+
+    try {
+      // 設定保存
+      await saveAll(data);
+      
+      // 保存完了表示
+      displaySettingsStatus.textContent = "保存しました";
+      displaySettingsStatus.style.color = "#17c964";
+      setTimeout(() => { 
+        displaySettingsStatus.textContent = ""; 
+        displaySettingsStatus.style.color = "";
+      }, 2500);
+
+    } catch (error) {
+      console.error("表示設定の保存に失敗しました:", error);
+      displaySettingsStatus.textContent = "保存に失敗しました。再度お試しください。";
+      displaySettingsStatus.style.color = "#f31260";
+      setTimeout(() => { displaySettingsStatus.textContent = ""; displaySettingsStatus.style.color = ""; }, 3000);
     }
   });
 });

@@ -4,862 +4,16 @@
 <!-- プロジェクト切り替えと勤怠管理のメインUI -->
 <html lang="ja">
   <head>
-    <!-- 基本メタタグ設定 -->
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>プロジェクト切替</title>
-    <!-- 拡張機能ポップアップ用のCSSスタイル -->
-    <style>
-      /* ===== テーマトークン（カラーパレット） ===== */
-      :root {
-        --bg: #ffffff;
-        --fg: #0f1222;
-        --muted: #6b7280;
-        --line: #e6eaf2;
-        --card: #ffffff;
-        --head: #f6f8fc;
-        --chip: #f4f6fb;
-        --accent: #2563eb;
-        --accent-2: #7c3aed;
-        --danger: #ef4444;
-        --ok: #10b981;
-        --shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
-      }
-      /* ダークモード設定（システム設定またはdata-theme="dark"） */
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0d1117;
-          --fg: #e6edf3;
-          --muted: #9aa4b2;
-          --line: #253142;
-          --card: #0f1522;
-          --head: #0d1420;
-          --chip: #121a2b;
-          --accent: #7db1ff;
-          --accent-2: #c084fc;
-          --danger: #ff6b6b;
-          --ok: #34d399;
-          --shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-        }
-      }
-      
-      /* 手動ダークモード指定 */
-      :root[data-theme="dark"] {
-        --bg: #0d1117;
-        --fg: #e6edf3;
-        --muted: #9aa4b2;
-        --line: #253142;
-        --card: #0f1522;
-        --head: #0d1420;
-        --chip: #121a2b;
-        --accent: #7db1ff;
-        --accent-2: #c084fc;
-        --danger: #ff6b6b;
-        --ok: #34d399;
-        --shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-      }
-      
-      /* 手動ライトモード指定 */
-      :root[data-theme="light"] {
-        --bg: #ffffff;
-        --fg: #0f1222;
-        --muted: #6b7280;
-        --line: #e6eaf2;
-        --card: #ffffff;
-        --head: #f6f8fc;
-        --chip: #f4f6fb;
-        --accent: #2563eb;
-        --accent-2: #7c3aed;
-        --danger: #ef4444;
-        --ok: #10b981;
-        --shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
-      }
-
-      /* ===== ベーススタイル（リセットとレイアウト） ===== */
-      * {
-        box-sizing: border-box;
-      }
-      html,
-      body {
-        margin: 0;
-      }
-      body {
-        width: 360px;
-        background: var(--bg);
-        color: var(--fg);
-        font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Inter,
-          "Noto Sans JP", sans-serif;
-      }
-      header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 10px 12px;
-        background: var(--head);
-        border-bottom: 1px solid var(--line);
-      }
-      h1 {
-        margin: 0;
-        font-size: 15px;
-        letter-spacing: 0.02em;
-      }
-      .wrap {
-        padding: 12px;
-      }
-
-      /* ===== カードとボタンのスタイル ===== */
-      .card {
-        background: var(--card);
-        border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: 12px;
-        box-shadow: var(--shadow);
-        margin-bottom: 12px;
-      }
-      .btn {
-        appearance: none;
-        border: 1px solid var(--line);
-        background: #fff0;
-        color: var(--fg);
-        padding: 8px 12px;
-        border-radius: 10px;
-        cursor: pointer;
-        transition: all 0.15s ease;
-      }
-      .btn:hover {
-        transform: translateY(-1px);
-        background: var(--chip);
-      }
-      .btn:focus-visible {
-        outline: 2px solid var(--accent);
-        outline-offset: 2px;
-      }
-      .btn.primary {
-        background: linear-gradient(135deg, var(--accent), var(--accent-2));
-        color: #fff;
-        border-color: transparent;
-        box-shadow: 0 6px 18px rgba(30, 64, 175, 0.25);
-      }
-      .btn.ghost {
-        border-color: var(--line);
-      }
-      .btn.small {
-        padding: 6px 8px;
-        font-size: 12px;
-      }
-
-      /* ===== アクティブプロジェクト表示カード ===== */
-      .active {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        border-radius: 16px;
-        padding: 12px;
-        border: 1px solid var(--line);
-        background: linear-gradient(
-          180deg,
-          color-mix(in oklab, var(--chip) 70%, transparent),
-          transparent
-        );
-      }
-      .active .left {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        font-weight: 600;
-        border-radius: 999px;
-        font-size: 12px;
-        background: linear-gradient(
-          135deg,
-          color-mix(in oklab, var(--accent) 18%, transparent),
-          transparent
-        );
-        border: 1px solid var(--line);
-      }
-      .spark {
-        width: 9px;
-        height: 9px;
-        border-radius: 50%;
-        background: radial-gradient(
-          circle at 30% 30%,
-          #fff,
-          color-mix(in oklab, var(--accent) 70%, #fff 0%) 60%,
-          transparent 61%
-        );
-        box-shadow: 0 0 12px color-mix(in oklab, var(--accent) 70%, #fff 0%);
-      }
-      .hint {
-        color: var(--muted);
-        font-size: 12px;
-      }
-
-      /* ===== 勤怠ステータス表示 ===== */
-      .status-display {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-      }
-      .status-info {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .status-text {
-        font-weight: 600;
-        font-size: 14px;
-      }
-      .status-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        display: inline-block;
-      }
-      .status-dot.working {
-        background: var(--ok);
-        box-shadow: 0 0 8px color-mix(in oklab, var(--ok) 70%, transparent);
-      }
-      .status-dot.break {
-        background: var(--accent-2);
-        box-shadow: 0 0 8px color-mix(in oklab, var(--accent-2) 70%, transparent);
-      }
-      .status-dot.off {
-        background: var(--muted);
-      }
-
-      /* ===== フォーム要素 ===== */
-      .row {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        flex-wrap: wrap;
-      }
-      .g {
-        display: grid;
-        gap: 10px;
-      }
-      .g2 {
-        grid-template-columns: 1fr 1fr;
-      }
-      label {
-        font-size: 12px;
-        color: var(--muted);
-        font-weight: 600;
-        margin-bottom: 4px;
-        display: block;
-      }
-      select,
-      input[type="time"],
-      input[type="number"] {
-        width: 100%;
-        padding: 8px 10px;
-        border-radius: 10px;
-        border: 1px solid var(--line);
-        background: var(--card);
-        color: var(--fg);
-      }
-
-      /* ===== 無効状態のスタイル ===== */
-      .notification-settings-disabled {
-        opacity: 0.5;
-        pointer-events: none;
-        transition: opacity 0.2s ease;
-      }
-      .notification-settings-disabled input,
-      .notification-settings-disabled label {
-        cursor: not-allowed !important;
-      }
-      
-      /* ===== カスタムセレクトボックスのスタイル ===== */
-      .select-container {
-        position: relative;
-      }
-      
-      .custom-select {
-        width: 100%;
-        padding: 12px 16px;
-        border-radius: 12px;
-        border: 2px solid var(--line);
-        background: linear-gradient(135deg, var(--card), color-mix(in oklab, var(--chip) 30%, transparent));
-        color: var(--fg);
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        position: relative;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        min-height: 44px;
-      }
-      
-      .custom-select:hover {
-        border-color: var(--accent);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
-      }
-      
-      .custom-select:focus {
-        outline: none;
-        border-color: var(--accent);
-        box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 20%, transparent);
-      }
-      
-      .custom-select::after {
-        content: '▼';
-        font-size: 12px;
-        color: var(--muted);
-        transition: transform 0.2s ease;
-      }
-      
-      .custom-select.open::after {
-        transform: rotate(180deg);
-      }
-      
-      .select-value {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      
-      .select-icon {
-        width: 20px;
-        height: 20px;
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 11px;
-        font-weight: 600;
-        background: linear-gradient(135deg, var(--accent), var(--accent-2));
-        color: white;
-        flex-shrink: 0;
-      }
-      
-      .select-dropdown {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        background: var(--card);
-        border: 2px solid var(--line);
-        border-top: none;
-        border-radius: 0 0 12px 12px;
-        max-height: 200px;
-        overflow-y: auto;
-        z-index: 1000;
-        display: none;
-        box-shadow: 0 8px 24px rgba(16, 24, 40, 0.15);
-      }
-      
-      .select-dropdown.show {
-        display: block;
-      }
-      
-      .select-option {
-        padding: 12px 16px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        transition: background-color 0.15s ease;
-        border-bottom: 1px solid color-mix(in oklab, var(--line) 50%, transparent);
-      }
-      
-      .select-option:hover {
-        background: var(--chip);
-      }
-      
-      .select-option:last-child {
-        border-bottom: none;
-      }
-      
-      .select-option.selected {
-        background: linear-gradient(135deg, color-mix(in oklab, var(--accent) 15%, transparent), color-mix(in oklab, var(--accent-2) 10%, transparent));
-        color: var(--accent);
-        font-weight: 600;
-      }
-      
-      /* Hide original selects */
-      select.hidden {
-        display: none;
-      }
-      
-      /* Special styling for sheet select */
-      .sheet-select-container {
-        position: relative;
-      }
-      
-      .sheet-custom-select {
-        background: linear-gradient(135deg, color-mix(in oklab, var(--accent-2) 8%, var(--card)), var(--card));
-        border: 2px dashed color-mix(in oklab, var(--accent-2) 40%, var(--line));
-      }
-      
-      .sheet-custom-select:hover {
-        border-color: var(--accent-2);
-        box-shadow: 0 4px 12px rgba(124, 58, 237, 0.1);
-      }
-      
-      .sheet-icon {
-        background: linear-gradient(135deg, var(--accent-2), color-mix(in oklab, var(--accent-2) 80%, var(--danger)));
-      }
-
-      /* ===== プロジェクト内容表示スタイル ===== */
-      .project-content {
-        background: linear-gradient(135deg, color-mix(in oklab, var(--chip) 30%, transparent), transparent);
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 12px;
-        font-size: 13px;
-        line-height: 1.5;
-      }
-      .project-content h1, .project-content h2, .project-content h3 {
-        margin: 12px 0 6px;
-        color: var(--accent);
-        font-weight: 600;
-      }
-      .project-content h1 { font-size: 16px; }
-      .project-content h2 { font-size: 15px; }
-      .project-content h3 { font-size: 14px; }
-      .project-content ul {
-        margin: 6px 0;
-        padding-left: 16px;
-      }
-      .project-content li {
-        margin: 2px 0;
-      }
-      .project-content a {
-        color: var(--accent);
-        text-decoration: none;
-        border-bottom: 1px dotted var(--accent);
-      }
-      .project-content a:hover {
-        background: color-mix(in oklab, var(--accent) 10%, transparent);
-        border-bottom: 1px solid var(--accent);
-        border-radius: 3px;
-        padding: 1px 2px;
-      }
-      .project-content code {
-        background: var(--chip);
-        padding: 2px 4px;
-        border-radius: 3px;
-        font-family: 'Courier New', monospace;
-        font-size: 12px;
-      }
-
-      .section-title {
-        margin: 0 0 8px;
-        font-size: 13px;
-        color: var(--muted);
-      }
-      .divider {
-        height: 1px;
-        background: var(--line);
-        margin: 8px 0;
-      }
-
-      /* ===== スプラッシュスクリーン（起動時のみ） ===== */
-      .splash {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        z-index: 9999;
-        animation: fadeOut 0.6s ease 2.4s forwards;
-      }
-      @keyframes fadeOut {
-        to {
-          opacity: 0;
-          visibility: hidden;
-        }
-      }
-      .logo-container {
-        text-align: center;
-        position: relative;
-        scale: 1;
-      }
-      .logo-symbol {
-        width: clamp(96px, 42vw, 160px);
-        height: clamp(96px, 42vw, 160px);
-        margin: 0 auto 18px;
-        position: relative;
-        overflow: hidden;
-      }
-      .logo-bg {
-        position: absolute;
-        inset: 0;
-        background: #2c5aa0;
-        border-radius: 18px;
-        opacity: 0;
-        animation: fadeInBg 0.7s ease-out 0.15s forwards;
-      }
-      .logo-letters {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 800;
-        color: #fff;
-        font-family: Arial, sans-serif;
-        font-size: clamp(62px, 22vw, 110px);
-      }
-      .letter-d {
-        opacity: 0;
-        transform: translateX(-40px);
-        animation: slideInD 0.55s ease-out 0.5s forwards;
-      }
-      .letter-c {
-        opacity: 0;
-        transform: translateX(40px);
-        animation: slideInC 0.55s ease-out 0.7s forwards;
-        margin-left: -6px;
-      }
-
-      .face-elements {
-        position: absolute;
-        inset: 0;
-      }
-      .eye {
-        position: absolute;
-        width: 12px;
-        height: 12px;
-        background: black;
-        border-radius: 50%;
-        opacity: 0;
-        animation: popIn 0.35s ease-out 1.05s forwards;
-      }
-      .left-eye {
-        top: calc(50% - 10px);
-        left: calc(50% - 38px);
-      }
-      .right-eye {
-        top: calc(50% - 10px);
-        right: calc(50% - 42px);
-      }
-      .smile {
-        position: absolute;
-        left: 50%;
-        bottom: 18%;
-        transform: translateX(-50%);
-        width: 48px;
-        height: 24px;
-        border: 6px solid black;
-        border-top: none;
-        border-radius: 0 0 48px 48px;
-        opacity: 0;
-        animation: drawSmile 0.5s ease-out 1.25s forwards;
-      }
-
-      .company-name {
-        font-size: clamp(18px, 6vw, 26px);
-        font-weight: 800;
-        color: white;
-        opacity: 0;
-        transform: translateY(18px);
-        animation: fadeInText 0.6s ease-out 1.55s forwards;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.25);
-      }
-      .subtitle {
-        font-size: 12px;
-        color: rgba(255, 255, 255, 0.9);
-        margin-top: 6px;
-        opacity: 0;
-        animation: fadeInSubtitle 0.45s ease-out 1.9s forwards;
-      }
-
-      @keyframes fadeInBg {
-        to {
-          opacity: 1;
-        }
-      }
-      @keyframes slideInD {
-        to {
-          opacity: 1;
-          transform: translateX(0);
-        }
-      }
-      @keyframes slideInC {
-        to {
-          opacity: 1;
-          transform: translateX(0);
-        }
-      }
-      @keyframes popIn {
-        0% {
-          opacity: 0;
-          transform: scale(0);
-        }
-        50% {
-          transform: scale(1.18);
-        }
-        to {
-          opacity: 1;
-          transform: scale(1);
-        }
-      }
-      @keyframes drawSmile {
-        0% {
-          opacity: 0;
-          transform: translateX(-50%) scaleY(0);
-        }
-        to {
-          opacity: 1;
-          transform: translateX(-50%) scaleY(1);
-        }
-      }
-      @keyframes fadeInText {
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-      @keyframes fadeInSubtitle {
-        to {
-          opacity: 1;
-        }
-      }
-    </style>
+    
+    <!-- 共通テーマCSS -->
+    <link rel="stylesheet" href="src/common/theme.css" />
+    <!-- ポップアップ専用CSS -->
+    <link rel="stylesheet" href="src/common/popup.css" />
   </head>
   <body>
-    <!-- ヘッダー：タイトルと追加ボタン -->
-    <header>
-      <h1>プロジェクト切替</h1>
-      <div class="row">
-        <!-- テーマ切替ボタン -->
-        <button id="themeToggle" class="btn small" title="ライト/ダーク/自動テーマ切替">🌗</button>
-        <!-- チーム・プロジェクト追加ボタン -->
-        <button id="addTeam" class="btn small">＋ チーム</button>
-        <button id="addProject" class="btn small">＋ PJ</button>
-      </div>
-    </header>
-
-    <div class="wrap">
-      <!-- ===== 勤怠ステータス表示カード ===== -->
-      <!-- 現在の出勤状態とMoneyForwardへのショートカット -->
-      <div class="card" id="statusCard">
-        <div class="status-display">
-          <!-- 勤怠状態表示（出勤中/休憩/退勤など） -->
-          <div id="attendanceStatus" class="status-info">
-            <span class="status-text">状況確認中...</span>
-          </div>
-          <!-- MoneyForward勤怠サイトへのクイックアクセスボタン -->
-          <button id="clockInShortcut" class="btn primary" style="display: none">
-            MoneyForward で出勤
-          </button>
-        </div>
-      </div>
-
-      <!-- ===== 現在選択中のプロジェクト表示 ===== -->
-      <!-- アクティブなチーム/プロジェクトの表示とステータス -->
-      <div class="card active" id="activeCard">
-        <div class="left">
-          <!-- アクティブ状態を示すビジュアル要素 -->
-          <span class="spark" aria-hidden="true"></span>
-          <div>
-            <div class="pill">選択中</div>
-            <!-- 現在選択されているチーム/プロジェクト名 -->
-            <div
-              id="activeLabel"
-              style="font-weight: 700; margin-top: 4px; font-size: 15px"
-            >
-              未選択
-            </div>
-          </div>
-        </div>
-        <!-- プロジェクト切り替え実行ボタン -->
-        <button id="switchBtn" class="btn primary" style="display: none">
-          このプロジェクトに切替
-        </button>
-      </div>
-
-      <!-- ===== プロジェクト選択セクション ===== -->
-      <!-- チーム・プロジェクト・シートから選択するUI群 -->
-      <div class="card">
-        <p class="section-title">選択</p>
-        <!-- チーム・プロジェクト選択エリア（2列レイアウト） -->
-        <div class="g g2">
-          <div>
-            <!-- チーム選択UI -->
-            <label for="teamSelect">🏢 チーム</label>
-            <div class="select-container">
-              <!-- カスタムセレクトボックス（UIの見た目） -->
-              <div class="custom-select" id="teamCustomSelect" tabindex="0">
-                <div class="select-value">
-                  <div class="select-icon">T</div>
-                  <span id="teamDisplayText">チームを選択</span>
-                </div>
-              </div>
-              <!-- ドロップダウンメニュー -->
-              <div class="select-dropdown" id="teamDropdown"></div>
-              <!-- 隠されたネイティブselect（値の保存用） -->
-              <select id="teamSelect" class="hidden"></select>
-            </div>
-          </div>
-          <div>
-            <!-- プロジェクト選択UI -->
-            <label for="projectSelect">📋 プロジェクト</label>
-            <div class="select-container">
-              <!-- カスタムプロジェクトセレクトボックス -->
-              <div class="custom-select" id="projectCustomSelect" tabindex="0">
-                <div class="select-value">
-                  <div class="select-icon">P</div>
-                  <span id="projectDisplayText">プロジェクトを選択</span>
-                </div>
-              </div>
-              <!-- プロジェクトドロップダウン -->
-              <div class="select-dropdown" id="projectDropdown"></div>
-              <select id="projectSelect" class="hidden"></select>
-            </div>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <!-- Googleスプレッドシート連携選択エリア -->
-        <div class="g">
-          <div class="row" style="justify-content: space-between">
-            <!-- シート項目選択ラベルと再読み込みボタン -->
-            <label for="sheetSelect"
-              >📊 シートの項目（B1:R1 / <span id="sheetMonth">-</span>）</label
-            >
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <button id="refreshSheet" class="btn small">🔄 再読込</button>
-              <span id="refreshStatus" class="hint" style="font-size: 11px;"></span>
-            </div>
-          </div>
-          <!-- スプレッドシートから項目を選択するUI -->
-          <div class="sheet-select-container">
-            <!-- シート選択用カスタムセレクト -->
-            <div class="custom-select sheet-custom-select" id="sheetCustomSelect" tabindex="0">
-              <div class="select-value">
-                <div class="select-icon sheet-icon">S</div>
-                <span id="sheetDisplayText">シートから選択</span>
-              </div>
-            </div>
-            <div class="select-dropdown" id="sheetDropdown"></div>
-            <select id="sheetSelect" class="hidden">
-              <option value="">（シートから選択）</option>
-            </select>
-          </div>
-          <!-- シート選択機能の説明 -->
-          <div class="hint">
-            💡 シートの項目を選ぶと、チームに存在しない場合は自動追加して選択します。
-          </div>
-        </div>
-      </div>
-
-      <!-- ===== プロジェクト内容表示カード ===== -->
-      <!-- 選択されたプロジェクトの詳細内容をMarkDown形式で表示 -->
-      <div class="card" id="projectContentCard" style="display: none;">
-        <p class="section-title">📝 プロジェクト内容</p>
-        <div id="projectContentDisplay" class="project-content">
-          <!-- プロジェクトの詳細内容がここに表示される -->
-        </div>
-        <div class="hint" style="margin-top: 8px;">
-          💡 内容は「設定」ページで編集できます。リンクをクリックして関連ページにアクセスできます。
-        </div>
-      </div>
-
-      <!-- ===== 休憩時間設定カード ===== -->
-      <!-- 勤怠計算で自動除外される休憩時間の設定 -->
-      <div class="card">
-        <p class="section-title">休憩時間</p>
-        <!-- 休憩開始・終了時刻の入力（2列レイアウト） -->
-        <div class="g g2">
-          <div>
-            <label for="breakStart">休憩開始</label>
-            <input type="time" id="breakStart" value="13:00" />
-          </div>
-          <div>
-            <label for="breakEnd">休憩終了</label>
-            <input type="time" id="breakEnd" value="14:00" />
-          </div>
-        </div>
-        <!-- 休憩時間保存ボタンとステータス表示 -->
-        <div class="row" style="margin-top: 10px">
-          <button id="saveBreakTime" class="btn">保存</button>
-          <span id="breakStatus" class="hint"></span>
-        </div>
-      </div>
-
-      <!-- ===== 出社時間設定カード ===== -->
-      <!-- 通知システム用の出社・退社時間設定 -->
-      <div class="card">
-        <p class="section-title">出社時間・通知設定</p>
-        <!-- 出社・退社時刻の入力（2列レイアウト） -->
-        <div class="g g2">
-          <div>
-            <label for="workStart">出社時刻</label>
-            <input type="time" id="workStart" value="10:00" />
-          </div>
-          <div>
-            <label for="workEnd">退社時刻</label>
-            <input type="time" id="workEnd" value="19:00" />
-          </div>
-        </div>
-        <!-- 通知設定 -->
-        <div class="g" style="margin-top: 10px">
-          <div>
-            <label>
-              <input type="checkbox" id="enableNotifications" />
-              通知機能を有効にする
-            </label>
-          </div>
-          <!-- 個別通知オンオフ設定 -->
-          <div id="notificationDetailsContainer" class="g g2" style="margin-top: 8px">
-            <div>
-              <label>
-                <input type="checkbox" id="enablePreWorkNotification" />
-                出社前通知
-              </label>
-            </div>
-            <div>
-              <label>
-                <input type="checkbox" id="enableWorkEndNotification" />
-                退社通知
-              </label>
-            </div>
-          </div>
-          <!-- 詳細設定 -->
-          <div id="notificationAdvancedContainer" class="g g2" style="margin-top: 8px">
-            <div>
-              <label for="preWorkNotifyMin">出社前通知時間（分前）</label>
-              <input type="number" id="preWorkNotifyMin" value="15" min="1" max="120" />
-            </div>
-            <div>
-              <label>
-                <input type="checkbox" id="enableWorkDays" />
-                平日のみ通知
-              </label>
-            </div>
-          </div>
-        </div>
-        <!-- 出社時間保存ボタンとステータス表示 -->
-        <div class="row" style="margin-top: 10px">
-          <button id="saveWorkTime" class="btn">保存</button>
-          <span id="workTimeStatus" class="hint"></span>
-        </div>
-      </div>
-
-      <!-- 機能説明テキスト -->
-      <div class="hint" style="margin-top: 6px">
-        切替を押すと現在時刻で <code>project_switch</code> を記録して
-        bridge.html を開きます。<br />
-        休憩時間は労働時間から自動で除外されます。
-      </div>
-    </div>
-
     <!-- ===== スプラッシュスクリーン（起動時のアニメーション） ===== -->
     <!-- 拡張機能初回起動時に表示されるブランディング画面 -->
     <div class="splash" id="splash" aria-hidden="true">
@@ -884,7 +38,159 @@
       </div>
     </div>
 
-    <!-- JavaScriptファイルの読み込み -->
+    <!-- ヘッダー：タイトルと操作ボタン -->
+    <header>
+      <h1>プロジェクト切替</h1>
+      <div class="row">
+        <!-- テーマ切替ボタン -->
+        <button id="themeToggle" class="btn small" title="ライト/ダーク/自動テーマ切替">🌗</button>
+        <!-- チーム・プロジェクト追加ボタン -->
+        <button id="addTeam" class="btn small">＋ チーム</button>
+        <button id="addProject" class="btn small">＋ PJ</button>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <!-- 勤怠ステータス表示カード -->
+      <div class="card" id="statusCard">
+        <h3 style="margin: 0 0 12px 0; font-size: 14px;">勤怠ステータス</h3>
+        <div id="attendanceStatus" class="muted">読み込み中...</div>
+        <button id="clockInShortcut" class="btn small" style="margin-top: 8px; display: none;">
+          MoneyForwardを開く
+        </button>
+      </div>
+
+      <!-- アクティブプロジェクト表示カード -->
+      <div class="card">
+        <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+          <h3 style="margin: 0; font-size: 14px;">現在のプロジェクト</h3>
+          <button id="switchBtn" class="btn small" style="display: none;">切替実行</button>
+        </div>
+        <div id="activeLabel" class="muted">読み込み中...</div>
+      </div>
+
+      <!-- プロジェクト選択UI -->
+      <div class="card">
+        <h3 style="margin: 0 0 12px 0; font-size: 14px;">プロジェクト選択</h3>
+        
+        <!-- チーム選択 -->
+        <label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted);">チーム</label>
+        <div id="teamCustomSelect" class="custom-select" style="margin-bottom: 12px;">
+          <span id="teamDisplayText">選択してください</span>
+          <div id="teamDropdown" class="select-dropdown"></div>
+        </div>
+        
+        <!-- プロジェクト選択 -->
+        <label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted);">プロジェクト</label>
+        <div id="projectCustomSelect" class="custom-select">
+          <span id="projectDisplayText">選択してください</span>
+          <div id="projectDropdown" class="select-dropdown"></div>
+        </div>
+        
+        <!-- 隠しセレクト（後方互換性） -->
+        <select id="teamSelect" style="display: none;"></select>
+        <select id="projectSelect" style="display: none;"></select>
+        
+        <!-- シート項目選択（スプレッドシート連携用） -->
+        <div style="margin-top: 16px;">
+          <label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--muted);">
+            シート項目選択 <span id="sheetMonth" class="small muted"></span>
+          </label>
+          <div class="row" style="gap: 4px;">
+            <div id="sheetCustomSelect" class="custom-select" style="flex: 1;">
+              <span id="sheetDisplayText">シートから選択</span>
+              <div id="sheetDropdown" class="select-dropdown"></div>
+            </div>
+            <button id="refreshSheet" class="btn small" title="再読み込み">🔄</button>
+          </div>
+          <select id="sheetSelect" style="display: none;"></select>
+          <div id="refreshStatus" class="small muted" style="margin-top: 4px;"></div>
+        </div>
+      </div>
+
+      <!-- プロジェクト内容表示カード -->
+      <div id="projectContentCard" class="card" style="display: none;">
+        <details>
+          <summary style="cursor: pointer; font-size: 14px; font-weight: 500;">プロジェクト内容</summary>
+          <div style="margin-top: 16px;">
+            <div id="projectContentDisplay" class="small" style="line-height: 1.5;"></div>
+          </div>
+        </details>
+      </div>
+
+      <!-- 設定セクション -->
+      <div class="card">
+        <details>
+          <summary style="cursor: pointer; font-size: 14px; font-weight: 500;">設定</summary>
+          
+          <div style="margin-top: 16px;">
+            <!-- 休憩時間設定 -->
+            <h4 style="margin: 0 0 8px 0; font-size: 13px;">休憩時間設定</h4>
+            <div class="row" style="margin-bottom: 12px;">
+              <input type="time" id="breakStart" style="flex: 1;" />
+              <span style="margin: 0 8px;">〜</span>
+              <input type="time" id="breakEnd" style="flex: 1;" />
+              <button id="saveBreakTime" class="btn small">保存</button>
+            </div>
+            <div id="breakStatus" class="small muted"></div>
+          </div>
+
+          <div style="margin-top: 16px;">
+            <!-- 表示設定 -->
+            <h4 style="margin: 0 0 8px 0; font-size: 13px;">表示設定</h4>
+            <label style="display: flex; align-items: center; margin-bottom: 12px; font-size: 12px;">
+              <input type="checkbox" id="enableStartupAnimation" />
+              起動アニメーションを有効にする
+            </label>
+            <button id="saveDisplaySettings" class="btn small" style="margin-bottom: 16px;">保存</button>
+            <div id="displaySettingsStatus" class="small muted" style="margin-bottom: 16px;"></div>
+          </div>
+
+          <div style="margin-top: 16px;">
+            <!-- 勤務時間・通知設定 -->
+            <h4 style="margin: 0 0 8px 0; font-size: 13px;">勤務時間・通知設定</h4>
+            <div class="row" style="margin-bottom: 8px;">
+              <input type="time" id="workStart" style="flex: 1;" />
+              <span style="margin: 0 8px;">〜</span>
+              <input type="time" id="workEnd" style="flex: 1;" />
+            </div>
+            
+            <label style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px;">
+              <input type="checkbox" id="enableNotifications" />
+              通知機能を有効にする
+            </label>
+            
+            <div id="notificationDetailsContainer" style="margin-left: 20px;">
+              <label style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px;">
+                <input type="checkbox" id="enablePreWorkNotification" />
+                出社前通知
+              </label>
+              
+              <label style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px;">
+                <input type="checkbox" id="enableWorkEndNotification" />
+                退社時通知
+              </label>
+              
+              <div class="row" style="margin-bottom: 8px;">
+                <label style="font-size: 12px; margin-right: 8px;">出社前通知:</label>
+                <input type="number" id="preWorkNotifyMin" style="width: 60px;" min="1" max="120" />
+                <span style="font-size: 12px; margin-left: 4px;">分前</span>
+              </div>
+              
+              <label style="display: flex; align-items: center; font-size: 12px;">
+                <input type="checkbox" id="enableWorkDays" />
+                平日のみ通知
+              </label>
+            </div>
+            
+            <button id="saveWorkTime" class="btn small" style="margin-top: 8px;">保存</button>
+            <div id="workTimeStatus" class="small muted" style="margin-top: 4px;"></div>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- メイン処理スクリプト（元の動作するpopup.js） -->
     <script src="popup.js"></script>
   </body>
 </html>
