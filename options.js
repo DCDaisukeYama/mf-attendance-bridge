@@ -1,14 +1,14 @@
 async function dynamicDefaults() {
   const bridgeUrl = chrome.runtime.getURL("bridge.html");
   
-  // secrets.pemから秘密情報を読み込み
+  // Storageから秘密情報を読み込み
   let secrets = {};
   try {
     if (typeof loadSecrets !== 'undefined') {
       secrets = await loadSecrets();
     }
   } catch (error) {
-    console.warn('secrets.pemの読み込みに失敗しました:', error);
+    console.warn('秘密情報の読み込みに失敗しました:', error);
     secrets = {};
   }
   

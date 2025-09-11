@@ -1,0 +1,53 @@
+/* ===== options.css - 設定ページ専用スタイル ===== */
+
+/* ベーススタイル：ページ全体のレイアウトとフォント設定 */
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 860px;
+  margin: 24px auto;
+  line-height: 1.6;
+}
+
+/* フォームラベルのスタイル */
+label {
+  display: block;
+  font-weight: 600;
+  margin-top: 16px;
+}
+
+/* 入力フィールドの統一スタイル */
+input[type="text"],
+input[type="url"],
+input[type="number"],
+input[type="password"],
+textarea {
+  width: 100%;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+/* 2列レイアウト用グリッドクラス */
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* ヘルプテキスト・説明文用スタイル */
+.hint {
+  color: #666;
+  font-size: 12px;
+}
+
+/* ボタンの基本スタイル */
+button {
+  padding: 8px 14px;
+  margin-top: 12px;
+}
+
+/* 3列レイアウト用グリッドクラス */
+.grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+}
