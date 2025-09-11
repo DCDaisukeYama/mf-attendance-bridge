@@ -379,6 +379,49 @@
         background: linear-gradient(135deg, var(--accent-2), color-mix(in oklab, var(--accent-2) 80%, var(--danger)));
       }
 
+      /* ===== プロジェクト内容表示スタイル ===== */
+      .project-content {
+        background: linear-gradient(135deg, color-mix(in oklab, var(--chip) 30%, transparent), transparent);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .project-content h1, .project-content h2, .project-content h3 {
+        margin: 12px 0 6px;
+        color: var(--accent);
+        font-weight: 600;
+      }
+      .project-content h1 { font-size: 16px; }
+      .project-content h2 { font-size: 15px; }
+      .project-content h3 { font-size: 14px; }
+      .project-content ul {
+        margin: 6px 0;
+        padding-left: 16px;
+      }
+      .project-content li {
+        margin: 2px 0;
+      }
+      .project-content a {
+        color: var(--accent);
+        text-decoration: none;
+        border-bottom: 1px dotted var(--accent);
+      }
+      .project-content a:hover {
+        background: color-mix(in oklab, var(--accent) 10%, transparent);
+        border-bottom: 1px solid var(--accent);
+        border-radius: 3px;
+        padding: 1px 2px;
+      }
+      .project-content code {
+        background: var(--chip);
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+      }
+
       .section-title {
         margin: 0 0 8px;
         font-size: 13px;
@@ -655,7 +698,10 @@
             <label for="sheetSelect"
               >📊 シートの項目（B1:R1 / <span id="sheetMonth">-</span>）</label
             >
-            <button id="refreshSheet" class="btn small">🔄 再読込</button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button id="refreshSheet" class="btn small">🔄 再読込</button>
+              <span id="refreshStatus" class="hint" style="font-size: 11px;"></span>
+            </div>
           </div>
           <!-- スプレッドシートから項目を選択するUI -->
           <div class="sheet-select-container">
@@ -675,6 +721,18 @@
           <div class="hint">
             💡 シートの項目を選ぶと、チームに存在しない場合は自動追加して選択します。
           </div>
+        </div>
+      </div>
+
+      <!-- ===== プロジェクト内容表示カード ===== -->
+      <!-- 選択されたプロジェクトの詳細内容をMarkDown形式で表示 -->
+      <div class="card" id="projectContentCard" style="display: none;">
+        <p class="section-title">📝 プロジェクト内容</p>
+        <div id="projectContentDisplay" class="project-content">
+          <!-- プロジェクトの詳細内容がここに表示される -->
+        </div>
+        <div class="hint" style="margin-top: 8px;">
+          💡 内容は「設定」ページで編集できます。リンクをクリックして関連ページにアクセスできます。
         </div>
       </div>
 

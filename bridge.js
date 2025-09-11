@@ -717,6 +717,76 @@ function computeTotals(pairs) {
   };
 }
 
+// MarkDown to HTML変換（bridge用）
+function markdownToHtml(md) {
+  if (!md) return "";
+  md = md.replace(/\r\n?/g, "\n").trim();
+
+  // inline
+  md = md
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+
+  // headings
+  md = md
+    .replace(/^###\s+(.+)$/gm, "<h3>$1</h3>")
+    .replace(/^##\s+(.+)$/gm, "<h2>$1</h2>")
+    .replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+
+  // list block（連続する "- " 行だけを <ul> に）
+  md = md.replace(/(^|\n)(-\s+.+(?:\n-\s+.+)*)/g, (_, start, block) => {
+    const items = block
+      .trim()
+      .split("\n")
+      .map(line => line.replace(/^\-\s+(.+)$/, "<li>$1</li>"))
+      .join("");
+    return `${start}<ul>${items}</ul>`;
+  });
+
+  // 段落処理：空行（2つ以上の改行）で分割してブロックを作成
+  const blocks = md.split(/\n{2,}/).map(block => {
+    block = block.trim();
+    if (!block) return "";
+    
+    // 既にHTML要素の場合はそのまま返す
+    if (/^<(h[1-3]|ul|ol|li|div|p)\b/i.test(block)) {
+      return block;
+    }
+    
+    // 通常のテキストブロック：単一改行を<br>に変換して段落でラップ
+    return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+  });
+
+  return blocks.filter(block => block).join("\n\n");
+}
+
+// プロジェクト内容を表示する関数
+async function displayProjectContent(projectName) {
+  if (!projectName) {
+    projectContentSection.style.display = 'none';
+    return;
+  }
+  
+  try {
+    // プロジェクト内容を取得
+    const saved = await chrome.storage.sync.get(['projectContents']);
+    const contents = saved.projectContents || {};
+    const content = contents[projectName];
+    
+    if (content && content.trim()) {
+      // 内容がある場合は表示（改行を適切に処理）
+      projectContentEl.innerHTML = markdownToHtml(content);
+      projectContentSection.style.display = 'block';
+    } else {
+      // 内容がない場合は非表示
+      projectContentSection.style.display = 'none';
+    }
+  } catch (error) {
+    console.error('プロジェクト内容の読み込みエラー:', error);
+    projectContentSection.style.display = 'none';
+  }
+}
+
 // ===== メイン =====
 document.addEventListener("DOMContentLoaded", async () => {
   const params = new URLSearchParams(location.search);
@@ -733,6 +803,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const latestEl = document.getElementById("latest");
   const totalsHost = document.getElementById("totals");
   const apiStatusEl = document.getElementById("apiStatus");
+  const projectContentSection = document.getElementById("projectContentSection");
+  const projectContentEl = document.getElementById("projectContent");
 
   // 保存された勤怠ログを読み込み
   let logs = loadLogs();
@@ -847,6 +919,12 @@ document.addEventListener("DOMContentLoaded", async () => {
          }
        </div>`
     : `<span class="muted">まだ記録がありません</span>`;
+
+  // プロジェクト内容を表示（最新記録がproject_switchの場合、またはURLパラメータから）
+  const currentProject = project || (latest && latest.action === 'project_switch' ? latest.project : null);
+  if (currentProject) {
+    await displayProjectContent(currentProject);
+  }
 
   // ===== 本日合計の計算 =====
   function computeTodayTotals(pairs) {
@@ -1022,6 +1100,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       await render();
       latestEl.innerHTML = '<span class="muted">まだ記録がありません</span>';
       statusEl.innerHTML = `<span class="stat"><span class="dot warndot"></span>ログを消去しました</span>`;
+      projectContentSection.style.display = 'none';
     }
   });
 });

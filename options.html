@@ -252,6 +252,58 @@
     <!-- 全ての設定を保存するボタンとステータス表示 -->
     <button id="save">保存</button>
     <span id="status" class="hint"></span>
+    <hr />
+    <!-- ===== セクション区切り線 ===== -->
+
+    <!-- ===== プロジェクト内容設定セクション ===== -->
+    <!-- 抽出したプロジェクト項目の内容を入力・保存する機能 -->
+    <h2>プロジェクト内容設定</h2>
+    <div class="hint">
+      スプレッドシートから抽出した項目について、詳細な内容を設定できます。<br />
+      MarkDown記法に対応しており、作業時のショートカットやメモとして活用できます。
+    </div>
+
+    <!-- プロジェクト選択UI -->
+    <label>プロジェクトを選択</label>
+    <select id="projectContentSelect">
+      <option value="">プロジェクトを選択してください</option>
+    </select>
+
+    <!-- プロジェクト内容入力エリア -->
+    <label>プロジェクト内容（MarkDown対応）</label>
+    <textarea 
+      id="projectContentInput" 
+      rows="14" 
+      placeholder="## プロジェクトの内容
+
+### 概要
+このプロジェクトについて説明を記載
+
+### リンク
+- [GitHub](https://github.com/example/project)
+- [設計書](https://docs.example.com)
+- [スタンドアップ](https://meet.google.com/xxx-xxx-xxx)
+
+### メモ
+- 今日のタスク
+- 注意点
+- その他"
+    ></textarea>
+
+    <!-- プロジェクト内容保存ボタンとプレビュー -->
+    <div class="row" style="margin-top: 10px">
+      <button id="saveProjectContent" class="btn">内容を保存</button>
+      <button id="previewProjectContent" class="btn ghost">プレビュー</button>
+      <span id="projectContentStatus" class="hint"></span>
+    </div>
+
+    <!-- プレビューエリア -->
+    <div id="projectContentPreview" style="display: none; margin-top: 12px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: #f9f9f9;">
+      <h3 style="margin-top: 0;">プレビュー</h3>
+      <div id="projectContentPreviewContent"></div>
+    </div>
+
+
 
     <!-- ===== 通知テストセクション ===== -->
     <!-- 出社・退社通知のテスト機能 -->
@@ -266,6 +318,7 @@
     <div id="notificationTestStatus" class="hint" style="color: #666;"></div>
 
     <!-- JavaScriptファイルの読み込み -->
+    <script src="secrets-loader.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

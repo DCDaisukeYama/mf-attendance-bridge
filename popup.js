@@ -281,8 +281,8 @@ function setupCustomSelectEventListeners() {
   });
 }
 // アクティブプロジェクト表示の更新
-// 現在選択中のチーム/プロジェクト名をUIに反映
-function updateActiveLabel(el, data) {
+// 現在選択中のチーム/プロジェクト名をUIに反映し、プロジェクト内容も表示
+async function updateActiveLabel(el, data) {
   const { team, project } = findActive(
     data.teams,
     data.activeTeamId,
@@ -290,6 +290,13 @@ function updateActiveLabel(el, data) {
   );
   el.textContent =
     team && project ? `${team.name} / ${project.name}` : "未選択";
+  
+  // プロジェクト内容も表示
+  if (project) {
+    await displayProjectContent(project.name);
+  } else {
+    await displayProjectContent(null);
+  }
 }
 
 // プロジェクト切り替えイベントの送信
@@ -304,6 +311,79 @@ function sendProjectSwitch(teamName, projName) {
     project: projName,
   };
   chrome.runtime.sendMessage({ type: "MF_BRIDGE_EVENT", payload });
+}
+
+// MarkDown to HTML変換（popup用シンプル版）
+function markdownToHtml(md) {
+  if (!md) return "";
+  md = md.replace(/\r\n?/g, "\n").trim();
+
+  // インライン
+  md = md
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+
+  // 見出し
+  md = md
+    .replace(/^###\s+(.+)$/gm, "<h3>$1</h3>")
+    .replace(/^##\s+(.+)$/gm, "<h2>$1</h2>")
+    .replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+
+  // リスト（連続する "- " 行のブロックだけを <ul> に包む）
+  md = md.replace(/(^|\n)(-\s+.+(?:\n-\s+.+)*)/g, (_, lead, block) => {
+    const items = block
+      .trim()
+      .split("\n")
+      .map(line => line.replace(/^\-\s+(.+)$/, "<li>$1</li>"))
+      .join("");
+    return `${lead}<ul>${items}</ul>`;
+  });
+
+  // 段落処理：空行（2つ以上の改行）で分割してブロックを作成
+  const blocks = md.split(/\n{2,}/).map(block => {
+    block = block.trim();
+    if (!block) return "";
+    
+    // 既にHTML要素の場合はそのまま返す
+    if (/^<(h[1-3]|ul|ol|li|div|p)\b/i.test(block)) {
+      return block;
+    }
+    
+    // 通常のテキストブロック：単一改行を<br>に変換して段落でラップ
+    return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+  });
+
+  return blocks.filter(block => block).join("\n\n");
+}
+
+// プロジェクト内容を表示する関数
+async function displayProjectContent(projectName) {
+  const contentCard = document.getElementById('projectContentCard');
+  const contentDisplay = document.getElementById('projectContentDisplay');
+  
+  if (!projectName) {
+    contentCard.style.display = 'none';
+    return;
+  }
+  
+  try {
+    // プロジェクト内容を取得
+    const saved = await chrome.storage.sync.get(['projectContents']);
+    const contents = saved.projectContents || {};
+    const content = contents[projectName];
+    
+    if (content && content.trim()) {
+      // 内容がある場合は表示
+      contentDisplay.innerHTML = markdownToHtml(content);
+      contentCard.style.display = 'block';
+    } else {
+      // 内容がない場合は非表示
+      contentCard.style.display = 'none';
+    }
+  } catch (error) {
+    console.error('プロジェクト内容の読み込みエラー:', error);
+    contentCard.style.display = 'none';
+  }
 }
 
 // ===== 勤怠ステータス管理関数群 =====
@@ -441,7 +521,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     data.teams.find((t) => t.id === selectedTeamId),
     selectedProjectId
   );
-  updateActiveLabel(activeLabel, data);                                      // アクティブプロジェクト表示更新
+  await updateActiveLabel(activeLabel, data);                                // アクティブプロジェクト表示更新
   breakStartInput.value = data.breakStart;                                   // 休憩開始時刻の設定
   breakEndInput.value = data.breakEnd;                                       // 休憩終了時刻の設定
 
@@ -556,10 +636,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       projectDisplayText,
       projectOptions,
       selectedProjectId,
-      (value) => {
+      async (value) => {
         selectedProjectId = value;
         projectSelect.value = value;
         refreshSwitchVisibility();
+        
+        // プロジェクト内容を表示（プレビュー用）
+        const selectedTeam = data.teams.find(t => t.id === selectedTeamId);
+        const selectedProject = selectedTeam?.projects.find(p => p.id === value);
+        if (selectedProject) {
+          await displayProjectContent(selectedProject.name);
+        } else {
+          await displayProjectContent(null);
+        }
       },
       "P"
     );
@@ -609,7 +698,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     data.activeTeamId = selectedTeamId;
     data.activeProjectId = selectedProjectId;
     await saveAll(data);
-    updateActiveLabel(activeLabel, data);
+    await updateActiveLabel(activeLabel, data);
     refreshSwitchVisibility();
 
     sendProjectSwitch(team.name, proj.name);
@@ -656,6 +745,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Sheet dropdown
   async function loadSheetHeaders(force = false) {
+    const refreshStatus = document.getElementById("refreshStatus");
+    
+    // ステータス表示を初期化
+    if (force) {
+      refreshStatus.textContent = "読み取り中...";
+      refreshStatus.style.color = "var(--muted)";
+    }
+    
     const { sheetMode, spreadsheetUrl, ssTeam, ssHeaderCache } =
       await chrome.storage.sync.get([
         "sheetMode",
@@ -679,6 +776,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         () => {},
         "S"
       );
+      
+      if (force) {
+        refreshStatus.textContent = "スプレッドシート設定が無効です";
+        refreshStatus.style.color = "var(--muted)";
+        setTimeout(() => refreshStatus.textContent = "", 2000);
+      }
       return;
     }
 
@@ -691,10 +794,27 @@ document.addEventListener("DOMContentLoaded", async () => {
         const cache = ssHeaderCache || {};
         cache[sheet] = headers;
         await chrome.storage.sync.set({ ssHeaderCache: cache });
+        
+        if (force) {
+          refreshStatus.textContent = `再読込完了 (${headers.length}項目)`;
+          refreshStatus.style.color = "var(--ok)";
+          setTimeout(() => refreshStatus.textContent = "", 2000);
+        }
       } catch (error) {
         console.error("Failed to fetch sheet headers:", error);
         headers = [];
+        
+        if (force) {
+          refreshStatus.textContent = "読み取り失敗";
+          refreshStatus.style.color = "var(--danger)";
+          setTimeout(() => refreshStatus.textContent = "", 2000);
+        }
       }
+    } else if (force) {
+      // キャッシュから読み取った場合
+      refreshStatus.textContent = `キャッシュから読込 (${headers.length}項目)`;
+      refreshStatus.style.color = "var(--accent)";
+      setTimeout(() => refreshStatus.textContent = "", 2000);
     }
     
     // Update both regular select and custom select
