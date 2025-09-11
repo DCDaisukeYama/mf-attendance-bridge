@@ -25,6 +25,7 @@
         --ok: #10b981;
         --shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
       }
+      /* ダークモード設定（システム設定またはdata-theme="dark"） */
       @media (prefers-color-scheme: dark) {
         :root {
           --bg: #0d1117;
@@ -40,6 +41,38 @@
           --ok: #34d399;
           --shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
         }
+      }
+      
+      /* 手動ダークモード指定 */
+      :root[data-theme="dark"] {
+        --bg: #0d1117;
+        --fg: #e6edf3;
+        --muted: #9aa4b2;
+        --line: #253142;
+        --card: #0f1522;
+        --head: #0d1420;
+        --chip: #121a2b;
+        --accent: #7db1ff;
+        --accent-2: #c084fc;
+        --danger: #ff6b6b;
+        --ok: #34d399;
+        --shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+      }
+      
+      /* 手動ライトモード指定 */
+      :root[data-theme="light"] {
+        --bg: #ffffff;
+        --fg: #0f1222;
+        --muted: #6b7280;
+        --line: #e6eaf2;
+        --card: #ffffff;
+        --head: #f6f8fc;
+        --chip: #f4f6fb;
+        --accent: #2563eb;
+        --accent-2: #7c3aed;
+        --danger: #ef4444;
+        --ok: #10b981;
+        --shadow: 0 8px 24px rgba(16, 24, 40, 0.08);
       }
 
       /* ===== ベーススタイル（リセットとレイアウト） ===== */
@@ -603,6 +636,8 @@
     <header>
       <h1>プロジェクト切替</h1>
       <div class="row">
+        <!-- テーマ切替ボタン -->
+        <button id="themeToggle" class="btn small" title="ライト/ダーク/自動テーマ切替">🌗</button>
         <!-- チーム・プロジェクト追加ボタン -->
         <button id="addTeam" class="btn small">＋ チーム</button>
         <button id="addProject" class="btn small">＋ PJ</button>

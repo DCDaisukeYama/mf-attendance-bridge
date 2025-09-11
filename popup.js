@@ -459,6 +459,63 @@ function loadAttendanceLogs() {
   }
 }
 
+// ===== テーマ管理（Auto / Light / Dark） =====
+// ユーザーのシステム設定や手動選択に基づいてダーク/ライトモードを切り替え
+(function setupTheme() {
+  const root = document.documentElement;
+  const media =
+    window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  const getSystemTheme = () => (media && media.matches ? "dark" : "light");
+
+  const MODE_KEY = "popup_theme_mode"; // "auto" | "light" | "dark"
+  function applyTheme(mode) {
+    const t = mode === "auto" ? getSystemTheme() : mode;
+    root.setAttribute("data-theme", t);
+  }
+  function readMode() {
+    const saved = localStorage.getItem(MODE_KEY);
+    return saved === "light" || saved === "dark" ? saved : "auto";
+  }
+  function writeMode(mode) {
+    localStorage.setItem(MODE_KEY, mode);
+  }
+  function updateButtonLabel(btn) {
+    if (!btn) return;
+    const m = readMode();
+    btn.textContent =
+      m === "auto"
+        ? "🌗"
+        : m === "light"
+        ? "🌞"
+        : "🌙";
+    btn.title = `テーマ: ${
+      m === "auto" ? "自動（システム）" : m === "light" ? "ライト" : "ダーク"
+    } - クリックで切替`;
+  }
+
+  // 初期化：Auto（既定）で適用
+  applyTheme(readMode());
+  if (media?.addEventListener)
+    media.addEventListener("change", () => {
+      if (readMode() === "auto") applyTheme("auto");
+    });
+  else if (media?.addListener)
+    media.addListener(() => {
+      if (readMode() === "auto") applyTheme("auto");
+    });
+  window.addEventListener("DOMContentLoaded", () => {
+    const btn = document.getElementById("themeToggle");
+    updateButtonLabel(btn);
+    btn?.addEventListener("click", () => {
+      const cur = readMode();
+      const next = cur === "auto" ? "light" : cur === "light" ? "dark" : "auto";
+      writeMode(next);
+      applyTheme(next);
+      updateButtonLabel(btn);
+    });
+  });
+})();
+
 // ===== メイン処理：DOM読み込み完了時の初期化 =====
 document.addEventListener("DOMContentLoaded", async () => {
   // スプラッシュスクリーンの処理
