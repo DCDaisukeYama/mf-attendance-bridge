@@ -181,7 +181,7 @@ function translatePage(page) {
 // プロジェクト切替を考慮した作業セグメントを構築
 async function buildWorkSegments(logs) {
   // 休憩時間設定を取得
-  const breakSettings = await chrome.storage.sync.get([
+  const breakSettings = await StorageUtils.get([
     "breakStart",
     "breakEnd",
   ]);
@@ -762,8 +762,13 @@ function markdownToHtml(md) {
 
 // プロジェクト内容を表示する関数
 async function displayProjectContent(projectName) {
-  if (!projectName) {
-    projectContentSection.style.display = 'none';
+  const projectContentSection = document.getElementById("projectContentSection");
+  const projectContentEl = document.getElementById("projectContent");
+  
+  if (!projectName || !projectContentSection || !projectContentEl) {
+    if (projectContentSection) {
+      projectContentSection.style.display = 'none';
+    }
     return;
   }
   
@@ -783,7 +788,9 @@ async function displayProjectContent(projectName) {
     }
   } catch (error) {
     console.error('プロジェクト内容の読み込みエラー:', error);
-    projectContentSection.style.display = 'none';
+    if (projectContentSection) {
+      projectContentSection.style.display = 'none';
+    }
   }
 }
 
@@ -938,18 +945,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     const todayProjects = {};
 
     for (const p of pairs) {
-      const outTime = new Date(p.outTime);
+      const outTime = new Date(p.outLog.timestamp);
       if (outTime >= todayStart && outTime < todayEnd) {
         todayPreciseMs += p.actualMs || p.diffMs;
-        todayRoundedMs += p.quarterHours * 15 * 60 * 1000;
+        todayRoundedMs += p.quarterUnits * 15 * 60 * 1000;
         
         // プロジェクト別集計
-        const projectKey = p.project || "不明";
+        const projectKey = p.outLog.project || p.inLog.project || "不明";
         if (!todayProjects[projectKey]) {
           todayProjects[projectKey] = { preciseMs: 0, roundedMs: 0 };
         }
         todayProjects[projectKey].preciseMs += p.actualMs || p.diffMs;
-        todayProjects[projectKey].roundedMs += p.quarterHours * 15 * 60 * 1000;
+        todayProjects[projectKey].roundedMs += p.quarterUnits * 15 * 60 * 1000;
       }
     }
 
@@ -1003,7 +1010,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           ${projectEntries.map(([project, data]) => 
             `<div class="row" style="gap:8px;font-size:11px;margin-bottom:2px">
               <span style="min-width:60px;font-weight:500">${project}:</span>
-              <span>${formatPreciseHMS(data.preciseMs)} (${(data.roundedMs / (1000 * 60 * 60)).toFixed(2)}h)</span>
+              <span>${formatPreciseHMS(data.preciseMs)} (${formatQuarterHours(Math.round(data.preciseMs / (15 * 60 * 1000)))}h)</span>
             </div>`
           ).join('')}
         </div>`;
@@ -1012,7 +1019,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       todayTotalsHost.innerHTML = `
         <div class="row" style="gap:12px;flex-wrap:wrap">
           <span class="small">正確: <b>${todayTotals.preciseText}</b>（${Math.floor(todayTotals.preciseMs / 60000)}分）</span>
-          <span class="small">0.25h: <b>${todayTotals.roundedHoursText}時間</b>（${todayTotals.roundedMin}分）</span>
+          <span class="small">0.25h: <b>${formatQuarterHours(Math.round(todayTotals.preciseMs / (15 * 60 * 1000)))}時間</b>（${todayTotals.roundedMin}分）</span>
         </div>
         ${projectsHtml}
       `;
