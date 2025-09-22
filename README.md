@@ -14,10 +14,41 @@ MoneyForwardの勤怠システムでの出勤・退勤ボタンのクリック�
 
 ## 🚀 インストール方法
 
-1. このリポジトリをクローンまたはダウンロード
-2. Chrome で `chrome://extensions/` を開く
-3. 「デベロッパーモード」を有効にする
-4. 「パッケージ化されていない拡張機能を読み込む」をクリック
+### 1. リポジトリのクローンとセットアップ
+
+```bash
+git clone https://github.com/DCDaisukeYama/mf-attendance-bridge.git
+cd mf-attendance-bridge
+```
+
+### 2. 🔒 秘密情報の設定 ⚠️ 重要
+
+この拡張機能を使用する前に、APIキーやトークンを設定する必要があります。
+
+#### 2-1. secrets.pemファイルの作成
+
+```bash
+# テンプレートファイルをコピー
+cp secrets.example.pem secrets.pem
+```
+
+#### 2-2. secrets.pemの編集
+
+`secrets.pem`を開いて、実際の値を入力してください：
+
+```bash
+
+# Test Server API Key (開発・テスト用)  
+TEST_API_KEY=test-api-key-12345
+
+# GitHub Personal Access Token (通常は不要)
+# GITHUB_TOKEN=あなたのGitHubトークン
+```
+### 3. Chrome拡張機能としてインストール
+
+1. Chrome で `chrome://extensions/` を開く
+2. 「デベロッパーモード」を有効にする
+3. 「パッケージ化されていない拡張機能を読み込む」をクリック
 5. ダウンロードしたフォルダを選択
 
 ## ⚙️ 設定方法
@@ -137,21 +168,40 @@ MoneyForwardの画面が変更された場合は、設定画面で以下を調�
 - **キーワード**: ボタンに表示されるテキストを追加/変更
 - **CSSセレクタ**: より具体的なセレクタを設定（`.time-stamp-button[data-action="clock-in"]`など）
 
-## 📁 ファイル構成
+## 🔒 セキュリティとパッケージ化
+
+### セキュリティについて
+
+- `secrets.pem` ファイルは **絶対にコミットしないでください**
+- `.gitignore` に `secrets.pem` が含まれていることを確認してください
+- パッケージ化する際は `secrets.pem` を除外してください
+- 定期的にトークンを更新・ローテーションしてください
+
+### パッケージ化手順
+
+拡張機能として配布する場合：
+
+1. `secrets.pem` ファイルが存在しないことを確認
+2. Chrome拡張機能の「パッケージ化」機能を使用
+3. 配布先で各自 `secrets.example.pem` を参考に `secrets.pem` を作成してもらう
+
+## 📁 ファイル構成（パッケージ化用）
 
 ```
 mf-attendance-bridge/
-├── manifest.json           # Chrome拡張の設定ファイル
-├── background.js           # サービスワーカー（メイン処理）
-├── content.js             # MoneyForwardページに注入されるスクリプト
-├── options.html           # 設定画面のHTML
-├── options.js            # 設定画面のJavaScript
-├── bridge.html           # 勤怠データ受信ページのHTML
-├── bridge.js            # 勤怠データ受信ページのJavaScript
-├── package.json         # Node.js設定ファイル
-├── fetch-icons.mjs     # アイコン生成スクリプト
-└── icons/              # 拡張機能のアイコン
-    ├── icon16.png
+├── manifest.json              # Chrome拡張機能の設定
+├── background.js             # バックグラウンドスクリプト
+├── content.js               # MoneyForward画面で動作するスクリプト
+├── popup.html              # ポップアップUI
+├── popup.js                # ポップアップの動作
+├── options.html            # 設定ページUI
+├── options.js              # 設定ページの動作
+├── bridge.html             # 勤怠データ表示ページ
+├── bridge.js               # ブリッジページの動作
+├── secrets-loader.js       # 秘密情報読み込みヘルパー
+├── icons/                  # アイコンファイル
+├── secrets.example.pem     # 秘密情報テンプレート
+└── secrets.pem            # 実際の秘密情報（.gitignoreで除外）
     ├── icon48.png
     └── icon128.png
 ```

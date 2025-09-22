@@ -1,0 +1,163 @@
+/* ===== bridge.css - ブリッジページ専用スタイル ===== */
+
+/* ===== THEME TOKENS ===== */
+/* ダークモードのカラー定義 */
+:root{
+  --bg1:#0b1020; --bg2:#0d1428; --card:#121a2f; --muted:#8aa0c7; --text:#e8eefc;
+  --ok:#17c964; --warn:#f5a524; --err:#f31260; --line:#203055;
+  --btn-bg:#0f1730; --th-bg:#0f1730; --code-bg:#0f1730; --row-hover:#0e1630;
+  --link:#9fc3ff;
+}
+/* ライトモードのカラー定義 */
+:root[data-theme="light"]{
+  --bg1:#f7f9fc; --bg2:#eef3fb; --card:#ffffff; --muted:#5d6b85; --text:#0b1220;
+  --ok:#0f9953; --warn:#c27c17; --err:#cc1e4a; --line:#d9e2f1;
+  --btn-bg:#f0f3fa; --th-bg:#f0f3fa; --code-bg:#eff3fa; --row-hover:#f6f9ff;
+  --link:#1b66d1;
+}
+
+/* ベーススタイル - ボックスモデルとフォント設定 */
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Helvetica,Arial,"Noto Sans JP",sans-serif;
+  background:linear-gradient(180deg,var(--bg1),var(--bg1) 80%,var(--bg2));
+  color:var(--text)
+}
+.wrap{max-width:1200px;margin:24px auto;padding:0 16px;overflow-x:hidden}
+h1{font-size:24px;margin:0 0 12px}
+.muted{color:var(--muted)}
+.card{
+  background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;
+  box-shadow:0 8px 24px rgba(0,0,0,.15); overflow:hidden; /* 子要素のはみ出し抑止 */
+}
+.grid{display:grid;gap:16px}
+@media(min-width:900px){.grid-2{grid-template-columns:1.2fr .8fr}}
+@media(max-width:899px){.grid-2{grid-template-columns:1fr}}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{appearance:none;border:1px solid var(--line);background:var(--btn-bg);color:var(--text);padding:8px 12px;border-radius:10px;cursor:pointer}
+.btn:hover{filter:brightness(1.06)}
+.btn.warn{border-color:rgba(245,165,36,.4)}
+.stat{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid var(--line)}
+.dot{width:10px;height:10px;border-radius:50%}
+.okdot{background:var(--ok)} .warndot{background:var(--warn)} .errdot{background:var(--err)}
+
+code,kbd{
+  background:var(--code-bg);border:1px solid var(--line);padding:.2em .5em;border-radius:8px;
+  word-break:break-all; overflow-wrap:anywhere; white-space:pre-wrap; /* 長いURLで横スクロールさせない */
+}
+
+/* ==== テーブル：レスポンシブ対応 ==== */
+.table-container{
+  overflow-x: auto;
+  margin: 16px 0;
+}
+table.logtable{
+  width:100%;
+  border-collapse:collapse;
+  border:1px solid var(--line);
+  min-width: 1000px; /* 最小幅を設定 */
+}
+table.logtable th, table.logtable td{
+  padding:8px 10px;
+  border-bottom:1px solid var(--line);
+  vertical-align:middle;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+table.logtable th{background:var(--th-bg);text-align:left;color:var(--muted)}
+tbody tr:hover{background:var(--row-hover)}
+
+/* カラム幅の調整（レスポンシブ） */
+@media (min-width: 1200px) {
+  .logtable td:nth-child(1) { width: 4%; }   /* # */
+  .logtable td:nth-child(2) { width: 7%; }   /* 種別 */
+  .logtable td:nth-child(3) { width: 20%; }  /* 日時 */
+  .logtable td:nth-child(4) { width: 10%; }  /* source */
+  .logtable td:nth-child(5) { width: 12%; }  /* team */
+  .logtable td:nth-child(6) { width: 12%; }  /* project */
+  .logtable td:nth-child(7) { width: 15%; }  /* page */
+  .logtable td:nth-child(8) { width: 5%; }   /* ref */
+  .logtable td:nth-child(9) { width: 12%; }  /* 労働時間（正確） */
+  .logtable td:nth-child(10) { width: 13%; } /* 労働時間（0.25h刻み） */
+}
+
+/* タブレット以下での表示調整 */
+@media (max-width: 1199px) {
+  .logtable td:nth-child(4), /* source */
+  .logtable th:nth-child(4) { 
+    display: none; 
+  }
+  .logtable td:nth-child(7), /* page */
+  .logtable th:nth-child(7) { 
+    display: none; 
+  }
+}
+
+/* スマホでの表示調整 */
+@media (max-width: 768px) {
+  .logtable td:nth-child(5), /* team */
+  .logtable th:nth-child(5),
+  .logtable td:nth-child(8), /* ref */
+  .logtable th:nth-child(8) { 
+    display: none; 
+  }
+}
+.badge{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);}
+.in{color:#0bd68a;background:rgba(11,214,138,.12);border-color:rgba(11,214,138,.4)}
+.out{color:#ffae33;background:rgba(255,174,51,.12);border-color:rgba(255,174,51,.4)}
+a{color:var(--link)}
+.small{font-size:12px}
+.kbd{font-variant-ligatures: no-common-ligatures;}
+.header-actions{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px}
+.right{display:flex;justify-content:flex-end}
+/* 日時セルだけ2行許可（JST + UTC） */
+.logtable td .dt{display:block;white-space:normal;line-height:1.25}
+.logtable td .utc{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+
+/* プロジェクト内容表示スタイル */
+.project-content {
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap; /* 改行を保持 */
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+.project-content h1, .project-content h2, .project-content h3 {
+  margin: 12px 0 6px 0;
+  color: var(--link);
+  font-weight: 600;
+}
+.project-content h1 { font-size: 16px; }
+.project-content h2 { font-size: 15px; }
+.project-content h3 { font-size: 14px; }
+.project-content ul {
+  margin: 6px 0;
+  padding-left: 16px;
+}
+.project-content li {
+  margin: 2px 0;
+}
+.project-content a {
+  color: var(--link);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--link);
+}
+.project-content a:hover {
+  background: rgba(159, 195, 255, 0.1);
+  border-bottom: 1px solid var(--link);
+  border-radius: 3px;
+  padding: 1px 2px;
+}
+.project-content code {
+  background: var(--btn-bg);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+}

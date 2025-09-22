@@ -16,6 +16,7 @@ const KEY = {
   ENABLE_WORK_END_NOTIFICATION: "enableWorkEndNotification", // 退社通知有効フラグ
   PRE_WORK_NOTIFY_MIN: "preWorkNotifyMin",     // 出社前通知（分前）
   ENABLE_WORK_DAYS: "enableWorkDays",         // 平日のみ通知フラグ
+  ENABLE_STARTUP_ANIMATION: "enableStartupAnimation", // 起動アニメーション有効フラグ
 };
 
 // デフォルトデータ生成関数
@@ -42,6 +43,7 @@ function defaultData() {
     enableWorkEndNotification: true,  // 退社通知デフォルト有効
     preWorkNotifyMin: 15,         // 出社前通知デフォルト15分前
     enableWorkDays: true,         // 平日のみ通知デフォルト有効
+    enableStartupAnimation: true, // 起動アニメーションデフォルト有効
   };
 }
 
@@ -61,6 +63,7 @@ async function loadAll() {
     KEY.ENABLE_WORK_END_NOTIFICATION,
     KEY.PRE_WORK_NOTIFY_MIN,
     KEY.ENABLE_WORK_DAYS,
+    KEY.ENABLE_STARTUP_ANIMATION,
   ]);
   
   // データが存在しない場合はデフォルトデータを作成・保存
@@ -84,6 +87,7 @@ async function loadAll() {
     enableWorkEndNotification: saved.enableWorkEndNotification !== undefined ? saved.enableWorkEndNotification : true,
     preWorkNotifyMin: saved.preWorkNotifyMin || 15,
     enableWorkDays: saved.enableWorkDays !== undefined ? saved.enableWorkDays : true,
+    enableStartupAnimation: saved.enableStartupAnimation !== undefined ? saved.enableStartupAnimation : true,
   };
 }
 
@@ -103,6 +107,7 @@ async function saveAll(data) {
     [KEY.ENABLE_WORK_END_NOTIFICATION]: data.enableWorkEndNotification,
     [KEY.PRE_WORK_NOTIFY_MIN]: data.preWorkNotifyMin,
     [KEY.ENABLE_WORK_DAYS]: data.enableWorkDays,
+    [KEY.ENABLE_STARTUP_ANIMATION]: data.enableStartupAnimation,
   });
 }
 
@@ -281,8 +286,8 @@ function setupCustomSelectEventListeners() {
   });
 }
 // アクティブプロジェクト表示の更新
-// 現在選択中のチーム/プロジェクト名をUIに反映
-function updateActiveLabel(el, data) {
+// 現在選択中のチーム/プロジェクト名をUIに反映し、プロジェクト内容も表示
+async function updateActiveLabel(el, data) {
   const { team, project } = findActive(
     data.teams,
     data.activeTeamId,
@@ -290,6 +295,13 @@ function updateActiveLabel(el, data) {
   );
   el.textContent =
     team && project ? `${team.name} / ${project.name}` : "未選択";
+  
+  // プロジェクト内容も表示
+  if (project) {
+    await displayProjectContent(project.name);
+  } else {
+    await displayProjectContent(null);
+  }
 }
 
 // プロジェクト切り替えイベントの送信
@@ -304,6 +316,79 @@ function sendProjectSwitch(teamName, projName) {
     project: projName,
   };
   chrome.runtime.sendMessage({ type: "MF_BRIDGE_EVENT", payload });
+}
+
+// MarkDown to HTML変換（popup用シンプル版）
+function markdownToHtml(md) {
+  if (!md) return "";
+  md = md.replace(/\r\n?/g, "\n").trim();
+
+  // インライン
+  md = md
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+
+  // 見出し
+  md = md
+    .replace(/^###\s+(.+)$/gm, "<h3>$1</h3>")
+    .replace(/^##\s+(.+)$/gm, "<h2>$1</h2>")
+    .replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+
+  // リスト（連続する "- " 行のブロックだけを <ul> に包む）
+  md = md.replace(/(^|\n)(-\s+.+(?:\n-\s+.+)*)/g, (_, lead, block) => {
+    const items = block
+      .trim()
+      .split("\n")
+      .map(line => line.replace(/^\-\s+(.+)$/, "<li>$1</li>"))
+      .join("");
+    return `${lead}<ul>${items}</ul>`;
+  });
+
+  // 段落処理：空行（2つ以上の改行）で分割してブロックを作成
+  const blocks = md.split(/\n{2,}/).map(block => {
+    block = block.trim();
+    if (!block) return "";
+    
+    // 既にHTML要素の場合はそのまま返す
+    if (/^<(h[1-3]|ul|ol|li|div|p)\b/i.test(block)) {
+      return block;
+    }
+    
+    // 通常のテキストブロック：単一改行を<br>に変換して段落でラップ
+    return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+  });
+
+  return blocks.filter(block => block).join("\n\n");
+}
+
+// プロジェクト内容を表示する関数
+async function displayProjectContent(projectName) {
+  const contentCard = document.getElementById('projectContentCard');
+  const contentDisplay = document.getElementById('projectContentDisplay');
+  
+  if (!projectName) {
+    contentCard.style.display = 'none';
+    return;
+  }
+  
+  try {
+    // プロジェクト内容を取得
+    const saved = await chrome.storage.sync.get(['projectContents']);
+    const contents = saved.projectContents || {};
+    const content = contents[projectName];
+    
+    if (content && content.trim()) {
+      // 内容がある場合は表示
+      contentDisplay.innerHTML = markdownToHtml(content);
+      contentCard.style.display = 'block';
+    } else {
+      // 内容がない場合は非表示
+      contentCard.style.display = 'none';
+    }
+  } catch (error) {
+    console.error('プロジェクト内容の読み込みエラー:', error);
+    contentCard.style.display = 'none';
+  }
 }
 
 // ===== 勤怠ステータス管理関数群 =====
@@ -379,6 +464,63 @@ function loadAttendanceLogs() {
   }
 }
 
+// ===== テーマ管理（Auto / Light / Dark） =====
+// ユーザーのシステム設定や手動選択に基づいてダーク/ライトモードを切り替え
+(function setupTheme() {
+  const root = document.documentElement;
+  const media =
+    window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+  const getSystemTheme = () => (media && media.matches ? "dark" : "light");
+
+  const MODE_KEY = "popup_theme_mode"; // "auto" | "light" | "dark"
+  function applyTheme(mode) {
+    const t = mode === "auto" ? getSystemTheme() : mode;
+    root.setAttribute("data-theme", t);
+  }
+  function readMode() {
+    const saved = localStorage.getItem(MODE_KEY);
+    return saved === "light" || saved === "dark" ? saved : "auto";
+  }
+  function writeMode(mode) {
+    localStorage.setItem(MODE_KEY, mode);
+  }
+  function updateButtonLabel(btn) {
+    if (!btn) return;
+    const m = readMode();
+    btn.textContent =
+      m === "auto"
+        ? "🌗"
+        : m === "light"
+        ? "🌞"
+        : "🌙";
+    btn.title = `テーマ: ${
+      m === "auto" ? "自動（システム）" : m === "light" ? "ライト" : "ダーク"
+    } - クリックで切替`;
+  }
+
+  // 初期化：Auto（既定）で適用
+  applyTheme(readMode());
+  if (media?.addEventListener)
+    media.addEventListener("change", () => {
+      if (readMode() === "auto") applyTheme("auto");
+    });
+  else if (media?.addListener)
+    media.addListener(() => {
+      if (readMode() === "auto") applyTheme("auto");
+    });
+  window.addEventListener("DOMContentLoaded", () => {
+    const btn = document.getElementById("themeToggle");
+    updateButtonLabel(btn);
+    btn?.addEventListener("click", () => {
+      const cur = readMode();
+      const next = cur === "auto" ? "light" : cur === "light" ? "dark" : "auto";
+      writeMode(next);
+      applyTheme(next);
+      updateButtonLabel(btn);
+    });
+  });
+})();
+
 // ===== メイン処理：DOM読み込み完了時の初期化 =====
 document.addEventListener("DOMContentLoaded", async () => {
   // スプラッシュスクリーンの処理
@@ -414,6 +556,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   const enableWorkDaysInput = document.getElementById("enableWorkDays");           // 平日のみ通知チェックボックス
   const saveWorkHoursBtn = document.getElementById("saveWorkTime");    // 出社時間設定保存ボタン
   const workTimeStatus = document.getElementById("workTimeStatus");    // 保存ステータス表示
+  
+  // 表示設定関連の要素
+  const enableStartupAnimationInput = document.getElementById("enableStartupAnimation"); // 起動アニメーション有効チェックボックス
+  const saveDisplaySettingsBtn = document.getElementById("saveDisplaySettings");  // 表示設定保存ボタン
+  const displaySettingsStatus = document.getElementById("displaySettingsStatus");  // 表示設定保存ステータス表示
 
   // カスタムセレクトボックス関連要素の取得
   const teamCustomSelect = document.getElementById("teamCustomSelect");       // チーム選択UI
@@ -441,7 +588,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     data.teams.find((t) => t.id === selectedTeamId),
     selectedProjectId
   );
-  updateActiveLabel(activeLabel, data);                                      // アクティブプロジェクト表示更新
+  await updateActiveLabel(activeLabel, data);                                // アクティブプロジェクト表示更新
   breakStartInput.value = data.breakStart;                                   // 休憩開始時刻の設定
   breakEndInput.value = data.breakEnd;                                       // 休憩終了時刻の設定
 
@@ -453,6 +600,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   enableWorkEndNotificationInput.checked = data.enableWorkEndNotification;  // 退社通知有効状態の設定
   preWorkNotifyMinInput.value = data.preWorkNotifyMin;                       // 出社前通知分数の設定
   enableWorkDaysInput.checked = data.enableWorkDays;                         // 平日のみ通知状態の設定
+
+  // 表示設定の初期化
+  enableStartupAnimationInput.checked = data.enableStartupAnimation;         // 起動アニメーション有効状態の設定
+
+  // 起動アニメーション制御
+  const splashScreen = document.getElementById("splash");
+  if (!data.enableStartupAnimation && splashScreen) {
+    splashScreen.style.display = "none";
+  }
 
   // 通知詳細設定の有効/無効状態を設定
   toggleNotificationSettings(data.enableNotifications);
@@ -556,10 +712,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       projectDisplayText,
       projectOptions,
       selectedProjectId,
-      (value) => {
+      async (value) => {
         selectedProjectId = value;
         projectSelect.value = value;
         refreshSwitchVisibility();
+        
+        // プロジェクト内容を表示（プレビュー用）
+        const selectedTeam = data.teams.find(t => t.id === selectedTeamId);
+        const selectedProject = selectedTeam?.projects.find(p => p.id === value);
+        if (selectedProject) {
+          await displayProjectContent(selectedProject.name);
+        } else {
+          await displayProjectContent(null);
+        }
       },
       "P"
     );
@@ -609,7 +774,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     data.activeTeamId = selectedTeamId;
     data.activeProjectId = selectedProjectId;
     await saveAll(data);
-    updateActiveLabel(activeLabel, data);
+    await updateActiveLabel(activeLabel, data);
     refreshSwitchVisibility();
 
     sendProjectSwitch(team.name, proj.name);
@@ -656,6 +821,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Sheet dropdown
   async function loadSheetHeaders(force = false) {
+    const refreshStatus = document.getElementById("refreshStatus");
+    
+    // ステータス表示を初期化
+    if (force) {
+      refreshStatus.textContent = "読み取り中...";
+      refreshStatus.style.color = "var(--muted)";
+    }
+    
     const { sheetMode, spreadsheetUrl, ssTeam, ssHeaderCache } =
       await chrome.storage.sync.get([
         "sheetMode",
@@ -679,6 +852,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         () => {},
         "S"
       );
+      
+      if (force) {
+        refreshStatus.textContent = "スプレッドシート設定が無効です";
+        refreshStatus.style.color = "var(--muted)";
+        setTimeout(() => refreshStatus.textContent = "", 2000);
+      }
       return;
     }
 
@@ -691,10 +870,27 @@ document.addEventListener("DOMContentLoaded", async () => {
         const cache = ssHeaderCache || {};
         cache[sheet] = headers;
         await chrome.storage.sync.set({ ssHeaderCache: cache });
+        
+        if (force) {
+          refreshStatus.textContent = `再読込完了 (${headers.length}項目)`;
+          refreshStatus.style.color = "var(--ok)";
+          setTimeout(() => refreshStatus.textContent = "", 2000);
+        }
       } catch (error) {
         console.error("Failed to fetch sheet headers:", error);
         headers = [];
+        
+        if (force) {
+          refreshStatus.textContent = "読み取り失敗";
+          refreshStatus.style.color = "var(--danger)";
+          setTimeout(() => refreshStatus.textContent = "", 2000);
+        }
       }
+    } else if (force) {
+      // キャッシュから読み取った場合
+      refreshStatus.textContent = `キャッシュから読込 (${headers.length}項目)`;
+      refreshStatus.style.color = "var(--accent)";
+      setTimeout(() => refreshStatus.textContent = "", 2000);
     }
     
     // Update both regular select and custom select
@@ -826,6 +1022,94 @@ document.addEventListener("DOMContentLoaded", async () => {
       workTimeStatus.textContent = "保存に失敗しました。再度お試しください。";
       workTimeStatus.style.color = "#f31260";
       setTimeout(() => { workTimeStatus.textContent = ""; workTimeStatus.style.color = ""; }, 3000);
+    }
+  });
+
+  // 表示設定保存ボタンのイベントハンドラー
+  saveDisplaySettingsBtn.addEventListener("click", async () => {
+    const enableStartupAnimation = enableStartupAnimationInput.checked;
+
+    // データ更新
+    data.enableStartupAnimation = enableStartupAnimation;
+
+    try {
+      // 設定保存
+      await saveAll(data);
+      
+      // 保存完了表示
+      displaySettingsStatus.textContent = "保存しました";
+      displaySettingsStatus.style.color = "#17c964";
+      setTimeout(() => { 
+        displaySettingsStatus.textContent = ""; 
+        displaySettingsStatus.style.color = "";
+      }, 2500);
+
+    } catch (error) {
+      console.error("表示設定の保存に失敗しました:", error);
+      displaySettingsStatus.textContent = "保存に失敗しました。再度お試しください。";
+      displaySettingsStatus.style.color = "#f31260";
+      setTimeout(() => { displaySettingsStatus.textContent = ""; displaySettingsStatus.style.color = ""; }, 3000);
+    }
+  });
+
+  // 通知テスト機能（デバッグ用）
+  // Ctrl+Shift+T で出勤前通知テスト、Ctrl+Shift+E で退勤通知テスト、Ctrl+Shift+A でアラーム確認
+  document.addEventListener("keydown", async (event) => {
+    if (event.ctrlKey && event.shiftKey) {
+      if (event.key === 'A') {
+        event.preventDefault();
+        console.log("Checking current alarms...");
+        try {
+          const response = await chrome.runtime.sendMessage({
+            type: "CHECK_ALARMS"
+          });
+          console.log("Current alarms response:", response);
+          if (response.ok) {
+            console.table(response.alarms);
+            alert(`現在のアラーム数: ${response.alarms.length}\n詳細はコンソールを確認してください`);
+          }
+        } catch (error) {
+          console.error("Alarm check failed:", error);
+        }
+      } else if (event.key === 'T') {
+        event.preventDefault();
+        console.log("Testing pre-work notification...");
+        try {
+          await chrome.runtime.sendMessage({
+            type: "TEST_NOTIFICATION",
+            notificationType: "pre-work",
+            preWorkNotifyMin: data.preWorkNotifyMin || 15
+          });
+          console.log("Pre-work notification test sent");
+        } catch (error) {
+          console.error("Pre-work notification test failed:", error);
+        }
+      } else if (event.key === 'E') {
+        event.preventDefault();
+        console.log("Testing work-end notification...");
+        try {
+          await chrome.runtime.sendMessage({
+            type: "TEST_NOTIFICATION",
+            notificationType: "work-end"
+          });
+          console.log("Work-end notification test sent");
+        } catch (error) {
+          console.error("Work-end notification test failed:", error);
+        }
+      } else if (event.key === 'S') {
+        event.preventDefault();
+        console.log("Testing 30-second alarm...");
+        try {
+          await chrome.runtime.sendMessage({
+            type: "TEST_NOTIFICATION",
+            notificationType: "alarm-test"
+          });
+          console.log("30-second alarm test created - wait 30 seconds for notification");
+          alert("30秒後にテスト通知が表示されます");
+        } catch (error) {
+          console.error("30-second alarm test failed:", error);
+        }
+      }
     }
   });
 });

@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "MF→自動打刻ブリッジ",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "description": "MoneyForwardの出勤/退勤クリックをフックして自作の勤怠サイトに自動記録します。",
     "permissions": [
         "storage",
@@ -15,7 +15,7 @@
         "https://script.googleusercontent.com/*"
     ],
     "background": {
-        "service_worker": "background.js"
+        "service_worker": "src/backend/background.js"
     },
     "content_scripts": [
         {
@@ -25,7 +25,7 @@
                 "https://biz.moneyforward.com/*"
             ],
             "js": [
-                "content.js"
+                "src/backend/content.js"
             ],
             "run_at": "document_start",
             "all_frames": true,
@@ -46,5 +46,16 @@
         "16": "icons/icon16.png",
         "48": "icons/icon48.png",
         "128": "icons/icon128.png"
-    }
+    },
+    "web_accessible_resources": [
+        {
+            "resources": [
+                "secrets.pem",
+                "secrets-loader.js"
+            ],
+            "matches": [
+                "<all_urls>"
+            ]
+        }
+    ]
 }

@@ -1,0 +1,446 @@
+/* ===== popup.css - ポップアップ専用スタイル ===== */
+
+/* ===== ベーススタイル（リセットとレイアウト） ===== */
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Inter,
+    "Noto Sans JP", sans-serif;
+  width: 400px;
+  height: 700px;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--head);
+  border-bottom: 1px solid var(--line);
+}
+header h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* ===== レイアウト・コンテナ ===== */
+.wrap {
+  width: 100%;
+  padding-bottom: 20px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 12px;
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.2s ease;
+}
+.card:hover {
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.12);
+}
+.grid {
+  display: grid;
+  gap: 12px;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+.badge.in {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--ok);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+.badge.out {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+.badge.warn {
+  background: rgba(251, 191, 36, 0.1);
+  color: #d97706;
+  border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+/* ===== ボタンスタイル ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+.btn:hover {
+  background: var(--chip);
+  border-color: var(--accent);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn.small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+}
+.btn.ghost:hover {
+  background: var(--chip);
+}
+
+/* ===== フォーム要素 ===== */
+input[type="text"],
+input[type="time"],
+input[type="number"],
+select,
+textarea {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--fg);
+  font-size: 13px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+input[type="checkbox"] {
+  margin-right: 8px;
+  accent-color: var(--accent);
+}
+
+/* ===== テキストスタイル ===== */
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 12px;
+}
+.hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ===== カスタムセレクトボックス ===== */
+.custom-select {
+  position: relative;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+}
+.custom-select > span {
+  display: block;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+.custom-select:hover > span {
+  border-color: var(--accent);
+  background: var(--chip);
+}
+.custom-select.open > span {
+  border-color: var(--accent);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.select-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  box-shadow: var(--shadow);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1000;
+  display: none;
+}
+.select-dropdown.show {
+  display: block;
+  animation: slideDown 0.15s ease;
+}
+.select-option {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.select-option:last-child {
+  border-bottom: none;
+}
+.select-option:hover {
+  background: var(--chip);
+}
+.select-option.selected {
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--accent);
+}
+.select-icon {
+  font-size: 10px;
+  margin-right: 8px;
+  width: 16px;
+  text-align: center;
+  font-weight: bold;
+}
+
+/* ===== ステータス表示 ===== */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+  display: inline-block;
+}
+.status-dot.working {
+  background: var(--ok);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+.status-dot.break {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);
+}
+.status-dot.off {
+  background: var(--muted);
+}
+
+/* ===== 通知設定のグレーアウト ===== */
+.notification-settings-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ===== アニメーション ===== */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== スプラッシュスクリーン（起動時のみ） ===== */
+.splash {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  z-index: 9999;
+  animation: fadeOut 0.6s ease 2.4s forwards;
+}
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+.logo-container {
+  text-align: center;
+  position: relative;
+  scale: 1;
+}
+.logo-symbol {
+  width: clamp(96px, 42vw, 160px);
+  height: clamp(96px, 42vw, 160px);
+  margin: 0 auto 18px;
+  position: relative;
+  overflow: hidden;
+}
+.logo-bg {
+  position: absolute;
+  inset: 0;
+  background: #2c5aa0;
+  border-radius: 18px;
+  opacity: 0;
+  animation: fadeInBg 0.7s ease-out 0.15s forwards;
+}
+.logo-letters {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: #fff;
+  font-family: Arial, sans-serif;
+  font-size: clamp(62px, 22vw, 110px);
+}
+.letter-d {
+  opacity: 0;
+  transform: translateX(-40px);
+  animation: slideInD 0.55s ease-out 0.5s forwards;
+}
+.letter-c {
+  opacity: 0;
+  transform: translateX(40px);
+  animation: slideInC 0.55s ease-out 0.7s forwards;
+  margin-left: -6px;
+}
+
+.face-elements {
+  position: absolute;
+  inset: 0;
+}
+.eye {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: black;
+  border-radius: 50%;
+  opacity: 0;
+  animation: popIn 0.35s ease-out 1.05s forwards;
+}
+.left-eye {
+  top: calc(50% - 10px);
+  left: calc(50% - 38px);
+}
+.right-eye {
+  top: calc(50% - 10px);
+  right: calc(50% - 42px);
+}
+.smile {
+  position: absolute;
+  left: 50%;
+  bottom: 18%;
+  transform: translateX(-50%);
+  width: 48px;
+  height: 24px;
+  border: 6px solid black;
+  border-top: none;
+  border-radius: 0 0 48px 48px;
+  opacity: 0;
+  animation: drawSmile 0.5s ease-out 1.25s forwards;
+}
+
+.company-name {
+  font-size: clamp(18px, 6vw, 26px);
+  font-weight: 800;
+  color: white;
+  opacity: 0;
+  transform: translateY(18px);
+  animation: fadeInText 0.6s ease-out 1.55s forwards;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.25);
+}
+.subtitle {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: 6px;
+  opacity: 0;
+  animation: fadeInSubtitle 0.45s ease-out 1.9s forwards;
+}
+
+@keyframes fadeInBg {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes slideInD {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes slideInC {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes popIn {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes drawSmile {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scaleY(0);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scaleY(1);
+  }
+}
+@keyframes fadeInText {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes fadeInSubtitle {
+  to {
+    opacity: 1;
+  }
+}
+
+/* ===== スクロールバースタイル ===== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--fg);
+}

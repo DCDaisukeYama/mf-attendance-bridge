@@ -84,7 +84,7 @@ function matchesSelectors(el, sels) {
   return false;
 }
 
-// Chromeストレージから設定を読み込む関数
+// ストレージから設定を読み込む関数
 async function loadCfg() {
   log("boot on", location.href);
   if (hasChromeStorage()) {

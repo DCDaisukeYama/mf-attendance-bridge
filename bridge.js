@@ -181,7 +181,7 @@ function translatePage(page) {
 // プロジェクト切替を考慮した作業セグメントを構築
 async function buildWorkSegments(logs) {
   // 休憩時間設定を取得
-  const breakSettings = await chrome.storage.sync.get([
+  const breakSettings = await StorageUtils.get([
     "breakStart",
     "breakEnd",
   ]);
@@ -717,6 +717,83 @@ function computeTotals(pairs) {
   };
 }
 
+// MarkDown to HTML変換（bridge用）
+function markdownToHtml(md) {
+  if (!md) return "";
+  md = md.replace(/\r\n?/g, "\n").trim();
+
+  // inline
+  md = md
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+
+  // headings
+  md = md
+    .replace(/^###\s+(.+)$/gm, "<h3>$1</h3>")
+    .replace(/^##\s+(.+)$/gm, "<h2>$1</h2>")
+    .replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+
+  // list block（連続する "- " 行だけを <ul> に）
+  md = md.replace(/(^|\n)(-\s+.+(?:\n-\s+.+)*)/g, (_, start, block) => {
+    const items = block
+      .trim()
+      .split("\n")
+      .map(line => line.replace(/^\-\s+(.+)$/, "<li>$1</li>"))
+      .join("");
+    return `${start}<ul>${items}</ul>`;
+  });
+
+  // 段落処理：空行（2つ以上の改行）で分割してブロックを作成
+  const blocks = md.split(/\n{2,}/).map(block => {
+    block = block.trim();
+    if (!block) return "";
+    
+    // 既にHTML要素の場合はそのまま返す
+    if (/^<(h[1-3]|ul|ol|li|div|p)\b/i.test(block)) {
+      return block;
+    }
+    
+    // 通常のテキストブロック：単一改行を<br>に変換して段落でラップ
+    return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+  });
+
+  return blocks.filter(block => block).join("\n\n");
+}
+
+// プロジェクト内容を表示する関数
+async function displayProjectContent(projectName) {
+  const projectContentSection = document.getElementById("projectContentSection");
+  const projectContentEl = document.getElementById("projectContent");
+  
+  if (!projectName || !projectContentSection || !projectContentEl) {
+    if (projectContentSection) {
+      projectContentSection.style.display = 'none';
+    }
+    return;
+  }
+  
+  try {
+    // プロジェクト内容を取得
+    const saved = await chrome.storage.sync.get(['projectContents']);
+    const contents = saved.projectContents || {};
+    const content = contents[projectName];
+    
+    if (content && content.trim()) {
+      // 内容がある場合は表示（改行を適切に処理）
+      projectContentEl.innerHTML = markdownToHtml(content);
+      projectContentSection.style.display = 'block';
+    } else {
+      // 内容がない場合は非表示
+      projectContentSection.style.display = 'none';
+    }
+  } catch (error) {
+    console.error('プロジェクト内容の読み込みエラー:', error);
+    if (projectContentSection) {
+      projectContentSection.style.display = 'none';
+    }
+  }
+}
+
 // ===== メイン =====
 document.addEventListener("DOMContentLoaded", async () => {
   const params = new URLSearchParams(location.search);
@@ -733,6 +810,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const latestEl = document.getElementById("latest");
   const totalsHost = document.getElementById("totals");
   const apiStatusEl = document.getElementById("apiStatus");
+  const projectContentSection = document.getElementById("projectContentSection");
+  const projectContentEl = document.getElementById("projectContent");
 
   // 保存された勤怠ログを読み込み
   let logs = loadLogs();
@@ -848,6 +927,12 @@ document.addEventListener("DOMContentLoaded", async () => {
        </div>`
     : `<span class="muted">まだ記録がありません</span>`;
 
+  // プロジェクト内容を表示（最新記録がproject_switchの場合、またはURLパラメータから）
+  const currentProject = project || (latest && latest.action === 'project_switch' ? latest.project : null);
+  if (currentProject) {
+    await displayProjectContent(currentProject);
+  }
+
   // ===== 本日合計の計算 =====
   function computeTodayTotals(pairs) {
     const today = new Date();
@@ -860,18 +945,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     const todayProjects = {};
 
     for (const p of pairs) {
-      const outTime = new Date(p.outTime);
+      const outTime = new Date(p.outLog.timestamp);
       if (outTime >= todayStart && outTime < todayEnd) {
         todayPreciseMs += p.actualMs || p.diffMs;
-        todayRoundedMs += p.quarterHours * 15 * 60 * 1000;
+        todayRoundedMs += p.quarterUnits * 15 * 60 * 1000;
         
         // プロジェクト別集計
-        const projectKey = p.project || "不明";
+        const projectKey = p.outLog.project || p.inLog.project || "不明";
         if (!todayProjects[projectKey]) {
           todayProjects[projectKey] = { preciseMs: 0, roundedMs: 0 };
         }
         todayProjects[projectKey].preciseMs += p.actualMs || p.diffMs;
-        todayProjects[projectKey].roundedMs += p.quarterHours * 15 * 60 * 1000;
+        todayProjects[projectKey].roundedMs += p.quarterUnits * 15 * 60 * 1000;
       }
     }
 
@@ -925,7 +1010,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           ${projectEntries.map(([project, data]) => 
             `<div class="row" style="gap:8px;font-size:11px;margin-bottom:2px">
               <span style="min-width:60px;font-weight:500">${project}:</span>
-              <span>${formatPreciseHMS(data.preciseMs)} (${(data.roundedMs / (1000 * 60 * 60)).toFixed(2)}h)</span>
+              <span>${formatPreciseHMS(data.preciseMs)} (${formatQuarterHours(Math.round(data.preciseMs / (15 * 60 * 1000)))}h)</span>
             </div>`
           ).join('')}
         </div>`;
@@ -934,7 +1019,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       todayTotalsHost.innerHTML = `
         <div class="row" style="gap:12px;flex-wrap:wrap">
           <span class="small">正確: <b>${todayTotals.preciseText}</b>（${Math.floor(todayTotals.preciseMs / 60000)}分）</span>
-          <span class="small">0.25h: <b>${todayTotals.roundedHoursText}時間</b>（${todayTotals.roundedMin}分）</span>
+          <span class="small">0.25h: <b>${formatQuarterHours(Math.round(todayTotals.preciseMs / (15 * 60 * 1000)))}時間</b>（${todayTotals.roundedMin}分）</span>
         </div>
         ${projectsHtml}
       `;
@@ -1022,6 +1107,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       await render();
       latestEl.innerHTML = '<span class="muted">まだ記録がありません</span>';
       statusEl.innerHTML = `<span class="stat"><span class="dot warndot"></span>ログを消去しました</span>`;
+      projectContentSection.style.display = 'none';
     }
   });
 });

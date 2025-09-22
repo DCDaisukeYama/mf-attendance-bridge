@@ -1,5 +1,17 @@
 async function dynamicDefaults() {
   const bridgeUrl = chrome.runtime.getURL("bridge.html");
+  
+  // Storageから秘密情報を読み込み
+  let secrets = {};
+  try {
+    if (typeof loadSecrets !== 'undefined') {
+      secrets = await loadSecrets();
+    }
+  } catch (error) {
+    console.warn('秘密情報の読み込みに失敗しました:', error);
+    secrets = {};
+  }
+  
   return {
     targetPageUrl: bridgeUrl,
     enableDirectPost: false,
@@ -20,8 +32,9 @@ async function dynamicDefaults() {
     ssTeam: "所属チーム",
     ssHeaderCache: {}, // { "YYYY年M月": ["PJ1","PJ2",...] }
     sheetWebAppUrl: "",
-    sheetToken:
-      "AKfycbyRVbsYfuL3bbcLsTXJ9VBXq5SA4EDWVVUPA-eGF_53PfuYWfVdLRFqcpZMIS0kOR3tlg",
+    // SHEET_TOKENは不要 - WebアプリURLから自動抽出されます
+    // プロジェクト内容保存用
+    projectContents: {}, // { "プロジェクト名": "MarkDown内容" }
   };
 }
 
@@ -54,6 +67,144 @@ async function fetchHeaderBR1Csv(ssUrl, sheetName) {
     .map((s) => s.replace(/^"|"$/g, "").trim())
     .filter(Boolean);
   return cols;
+}
+
+// MarkDown to HTML変換
+function markdownToHtml(md) {
+  if (!md) return "";
+  md = md.replace(/\r\n?/g, "\n").trim();
+
+  // インライン
+  md = md
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+
+  // 見出し
+  md = md
+    .replace(/^###\s+(.+)$/gm, "<h3>$1</h3>")
+    .replace(/^##\s+(.+)$/gm, "<h2>$1</h2>")
+    .replace(/^#\s+(.+)$/gm, "<h1>$1</h1>");
+
+  // リスト（連続する "- " 行のブロックだけを <ul> に包む）
+  md = md.replace(/(^|\n)(-\s+.+(?:\n-\s+.+)*)/g, (_, lead, block) => {
+    const items = block
+      .trim()
+      .split("\n")
+      .map(line => line.replace(/^\-\s+(.+)$/, "<li>$1</li>"))
+      .join("");
+    return `${lead}<ul>${items}</ul>`;
+  });
+
+  // 段落処理：空行（2つ以上の改行）で分割してブロックを作成
+  const blocks = md.split(/\n{2,}/).map(block => {
+    block = block.trim();
+    if (!block) return "";
+    
+    // 既にHTML要素の場合はそのまま返す
+    if (/^<(h[1-3]|ul|ol|li|div|p)\b/i.test(block)) {
+      return block;
+    }
+    
+    // 通常のテキストブロック：単一改行を<br>に変換して段落でラップ
+    return `<p>${block.replace(/\n/g, "<br>")}</p>`;
+  });
+
+  return blocks.filter(block => block).join("\n\n");
+}
+
+// プロジェクト選択肢を更新
+function updateProjectContentOptions() {
+  const select = document.getElementById('projectContentSelect');
+  const saved = chrome.storage.sync.get(['ssHeaderCache', 'sheetHeaders']);
+  
+  saved.then(data => {
+    const headers = data.sheetHeaders || [];
+    
+    // 既存のオプションを削除（最初の「選択してください」以外）
+    while (select.children.length > 1) {
+      select.removeChild(select.lastChild);
+    }
+    
+    // ヘッダーからオプションを追加
+    headers.forEach(header => {
+      if (header.trim()) {
+        const option = document.createElement('option');
+        option.value = header;
+        option.textContent = header;
+        select.appendChild(option);
+      }
+    });
+  });
+}
+
+// プロジェクト内容を保存
+async function saveProjectContent() {
+  const projectName = document.getElementById('projectContentSelect').value;
+  const content = document.getElementById('projectContentInput').value;
+  const status = document.getElementById('projectContentStatus');
+  
+  if (!projectName) {
+    status.textContent = 'プロジェクトを選択してください';
+    setTimeout(() => status.textContent = '', 2000);
+    return;
+  }
+  
+  try {
+    const saved = await chrome.storage.sync.get(['projectContents']);
+    const contents = saved.projectContents || {};
+    contents[projectName] = content;
+    
+    await chrome.storage.sync.set({ projectContents: contents });
+    
+    status.textContent = '保存しました';
+    setTimeout(() => status.textContent = '', 2000);
+  } catch (error) {
+    status.textContent = '保存に失敗しました';
+    console.error('Save error:', error);
+  }
+}
+
+// プロジェクト内容をプレビュー
+function previewProjectContent() {
+  const content = document.getElementById('projectContentInput').value;
+  const preview = document.getElementById('projectContentPreview');
+  const previewContent = document.getElementById('projectContentPreviewContent');
+  
+  if (!content.trim()) {
+    preview.style.display = 'none';
+    return;
+  }
+  
+  previewContent.innerHTML = markdownToHtml(content);
+  preview.style.display = 'block';
+}
+
+// プロジェクト選択時に内容を読み込み
+async function loadProjectContent() {
+  const projectName = document.getElementById('projectContentSelect').value;
+  const input = document.getElementById('projectContentInput');
+  const preview = document.getElementById('projectContentPreview');
+  
+  if (!projectName) {
+    input.value = '';
+    preview.style.display = 'none';
+    return;
+  }
+  
+  try {
+    const saved = await chrome.storage.sync.get(['projectContents']);
+    const contents = saved.projectContents || {};
+    input.value = contents[projectName] || '';
+    
+    // プレビューも更新
+    if (input.value.trim()) {
+      previewProjectContent();
+    } else {
+      preview.style.display = 'none';
+    }
+  } catch (error) {
+    console.error('Load error:', error);
+  }
 }
 
 // 設定を読み込む（追記：ss* を UI に反映）
@@ -92,6 +243,9 @@ async function load() {
   set("ssTeam", cfg.ssTeam);
   set("ssWriterUrl", cfg.sheetWebAppUrl);
 
+  // プロジェクト内容設定エリアの初期化
+  updateProjectContentOptions();
+
   // 読み取りテストボタン
   document.getElementById("btnSsFetch").onclick = async () => {
     const status = document.getElementById("ssFetchStatus");
@@ -108,6 +262,9 @@ async function load() {
 
       status.textContent = `OK: ${sheet} / ${headers.length}件`;
       setTimeout(() => (status.textContent = ""), 1500);
+      
+      // プロジェクト選択肢を更新
+      updateProjectContentOptions();
     } catch (e) {
       status.textContent = `失敗: ${e.message}`;
     }
@@ -246,6 +403,9 @@ async function save() {
       const cache = saved2.ssHeaderCache || {};
       cache[sheet] = headers;
       await chrome.storage.sync.set({ ssHeaderCache: cache, sheetHeaders: headers });
+      
+      // プロジェクト選択肢を更新
+      updateProjectContentOptions();
     } catch {
       /* 失敗は黙殺（手動テストボタンで再試行可）*/
     }
@@ -334,6 +494,11 @@ window.addEventListener("DOMContentLoaded", () => {
   // 通知テストボタンのイベントリスナー追加
   document.getElementById("testPreWorkNotification")?.addEventListener("click", testPreWorkNotification);
   document.getElementById("testWorkEndNotification")?.addEventListener("click", testWorkEndNotification);
+  
+  // プロジェクト内容関連のイベントリスナー追加
+  document.getElementById("projectContentSelect")?.addEventListener("change", loadProjectContent);
+  document.getElementById("saveProjectContent")?.addEventListener("click", saveProjectContent);
+  document.getElementById("previewProjectContent")?.addEventListener("click", previewProjectContent);
 });
 
 // 設定ページの機能すべてが上記の関数で実装されています
