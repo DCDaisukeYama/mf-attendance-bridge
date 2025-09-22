@@ -29,6 +29,7 @@ async function dynamicDefaults() {
     // 追加：スプレッドシート設定
     sheetMode: false,
     spreadsheetUrl: "",
+    memberSpreadsheetUrl: "", // メンバー情報用スプレッドシート
     ssTeam: "所属チーム",
     ssHeaderCache: {}, // { "YYYY年M月": ["PJ1","PJ2",...] }
     sheetWebAppUrl: "",
@@ -240,6 +241,7 @@ async function load() {
   // 追加
   setChk("ssEnabled", cfg.sheetMode);
   set("ssUrl", cfg.spreadsheetUrl);
+  set("memberSpreadsheetUrl", cfg.memberSpreadsheetUrl);
   set("ssTeam", cfg.ssTeam);
   set("ssWriterUrl", cfg.sheetWebAppUrl);
 
@@ -387,6 +389,7 @@ async function save() {
     debug: getChk("debug"),
     sheetMode: getChk("ssEnabled"),
     spreadsheetUrl: get("ssUrl"),
+    memberSpreadsheetUrl: get("memberSpreadsheetUrl"),
     ssTeam: get("ssTeam") || "所属チーム",
     sheetWebAppUrl: get("ssWriterUrl"),
   };
