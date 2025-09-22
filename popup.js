@@ -1051,4 +1051,65 @@ document.addEventListener("DOMContentLoaded", async () => {
       setTimeout(() => { displaySettingsStatus.textContent = ""; displaySettingsStatus.style.color = ""; }, 3000);
     }
   });
+
+  // 通知テスト機能（デバッグ用）
+  // Ctrl+Shift+T で出勤前通知テスト、Ctrl+Shift+E で退勤通知テスト、Ctrl+Shift+A でアラーム確認
+  document.addEventListener("keydown", async (event) => {
+    if (event.ctrlKey && event.shiftKey) {
+      if (event.key === 'A') {
+        event.preventDefault();
+        console.log("Checking current alarms...");
+        try {
+          const response = await chrome.runtime.sendMessage({
+            type: "CHECK_ALARMS"
+          });
+          console.log("Current alarms response:", response);
+          if (response.ok) {
+            console.table(response.alarms);
+            alert(`現在のアラーム数: ${response.alarms.length}\n詳細はコンソールを確認してください`);
+          }
+        } catch (error) {
+          console.error("Alarm check failed:", error);
+        }
+      } else if (event.key === 'T') {
+        event.preventDefault();
+        console.log("Testing pre-work notification...");
+        try {
+          await chrome.runtime.sendMessage({
+            type: "TEST_NOTIFICATION",
+            notificationType: "pre-work",
+            preWorkNotifyMin: data.preWorkNotifyMin || 15
+          });
+          console.log("Pre-work notification test sent");
+        } catch (error) {
+          console.error("Pre-work notification test failed:", error);
+        }
+      } else if (event.key === 'E') {
+        event.preventDefault();
+        console.log("Testing work-end notification...");
+        try {
+          await chrome.runtime.sendMessage({
+            type: "TEST_NOTIFICATION",
+            notificationType: "work-end"
+          });
+          console.log("Work-end notification test sent");
+        } catch (error) {
+          console.error("Work-end notification test failed:", error);
+        }
+      } else if (event.key === 'S') {
+        event.preventDefault();
+        console.log("Testing 30-second alarm...");
+        try {
+          await chrome.runtime.sendMessage({
+            type: "TEST_NOTIFICATION",
+            notificationType: "alarm-test"
+          });
+          console.log("30-second alarm test created - wait 30 seconds for notification");
+          alert("30秒後にテスト通知が表示されます");
+        } catch (error) {
+          console.error("30-second alarm test failed:", error);
+        }
+      }
+    }
+  });
 });
