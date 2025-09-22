@@ -1,6 +1,26 @@
-// ===== background.js =====
+// ===== background.js v1.0.2 =====
 // Brave/Vivaldi/Opera/Chrome => chrome-extension://
 // Microsoft Edge => extension://
+console.log("[MF-Bridge] Background script loaded v1.0.3 - Fixed notification icon paths using chrome.runtime.getURL()");
+
+// StorageUtils実装
+const StorageUtils = {
+  async get(keys) {
+    return await chrome.storage.sync.get(keys);
+  },
+  
+  async set(data) {
+    return await chrome.storage.sync.set(data);
+  },
+  
+  async remove(keys) {
+    return await chrome.storage.sync.remove(keys);
+  },
+  
+  async clear() {
+    return await chrome.storage.sync.clear();
+  }
+};
 
 function detectBrowserBrand() {
   const ua = (navigator && navigator.userAgent) || "";
@@ -17,7 +37,7 @@ function defaultSchemeForBrand(brand) {
 async function readForcedScheme() {
   // extUrlScheme があればそれを優先（オプション画面がなくても devtools 等で設定可能）
   try {
-    const r = await chrome.storage.sync.get(["extUrlScheme"]);
+    const r = await StorageUtils.get(["extUrlScheme"]);
     const s = r && r.extUrlScheme;
     return s === "extension" || s === "chrome-extension" ? s : null;
   } catch {
@@ -86,8 +106,8 @@ async function getDynamicDefaults() {
     enableDirectPost: false,
     targetApiUrl: "",
     apiKey: "",
-    openInBackground: true,
-    autoCloseMs: 100,
+    openInBackground: false,
+    autoCloseMs: 3000,
     showNotificationOnSuccess: true,
     inKeywords: [
       "出勤",
@@ -126,10 +146,10 @@ async function getDynamicDefaults() {
 // 現在の設定を保持するグローバル変数
 let settings = null;
 
-// chrome.storage.syncから設定を読み込み、メモリに保存
+// ストレージから設定を読み込み、メモリに保存
 async function loadSettings() {
   const dynamic = await getDynamicDefaults();
-  const saved = await chrome.storage.sync.get(STATIC_KEYS);
+  const saved = await StorageUtils.get(STATIC_KEYS);
   const forced = saved.extUrlScheme || dynamic.extUrlScheme || null;
   const merged = { ...dynamic, ...saved };
 
@@ -167,12 +187,12 @@ async function loadSettings() {
 
 async function seedDefaultsIfMissing() {
   const dynamic = await getDynamicDefaults();
-  const saved = await chrome.storage.sync.get(STATIC_KEYS);
+  const saved = await StorageUtils.get(STATIC_KEYS);
   const toSet = {};
   for (const k of STATIC_KEYS) {
     if (saved[k] === undefined) toSet[k] = dynamic[k];
   }
-  if (Object.keys(toSet).length) await chrome.storage.sync.set(toSet);
+  if (Object.keys(toSet).length) await StorageUtils.set(toSet);
 }
 
 // デバッグ用のログ出力関数（debug設定がtrueの時のみ表示）
@@ -305,7 +325,7 @@ function quarterHoursDecimal(ms) {
 // 現在選択中のチーム/プロジェクト名を取得（popup の保存情報から）
 async function getActiveTeamProjectNames() {
   const { teams, activeTeamId, activeProjectId } =
-    await chrome.storage.sync.get(["teams", "activeTeamId", "activeProjectId"]);
+    await StorageUtils.get(["teams", "activeTeamId", "activeProjectId"]);
   const team =
     (teams || []).find((t) => t.id === activeTeamId) || (teams || [])[0];
   const project =
@@ -792,6 +812,70 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true; // async
   }
 
+  // アラーム状況確認ハンドラー
+  if (msg?.type === "CHECK_ALARMS") {
+    (async () => {
+      try {
+        const alarms = await chrome.alarms.getAll();
+        log("Current alarms:", alarms);
+        sendResponse({ ok: true, alarms: alarms });
+      } catch (error) {
+        log("Error getting alarms:", error);
+        sendResponse({ ok: false, error: error.message });
+      }
+    })();
+    
+    return true; // async
+  }
+
+  // 通知テストハンドラー
+  if (msg?.type === "TEST_NOTIFICATION") {
+    (async () => {
+      try {
+        const { notificationType, preWorkNotifyMin } = msg;
+        
+        if (notificationType === "pre-work") {
+          const minBefore = preWorkNotifyMin || 15;
+          await chrome.notifications.create(`TEST_PRE_WORK_${Date.now()}`, {
+            type: 'basic',
+            iconUrl: chrome.runtime.getURL('icons/icon48.png'),
+            title: '【テスト】出勤時間のお知らせ',
+            message: `${minBefore}分後に出社時刻です。出勤の準備をお忘れなく！（これはテスト通知です）`,
+            buttons: [
+              { title: 'MoneyForwardを開く' },
+              { title: '後で通知' }
+            ]
+          });
+        } else if (notificationType === "work-end") {
+          await chrome.notifications.create(`TEST_WORK_END_${Date.now()}`, {
+            type: 'basic',
+            iconUrl: chrome.runtime.getURL('icons/icon48.png'),
+            title: '【テスト】退社時間のお知らせ',
+            message: '退社時刻になりました。お疲れさまでした！（これはテスト通知です）',
+            buttons: [
+              { title: 'MoneyForwardを開く' },
+              { title: 'スヌーズ' }
+            ]
+          });
+        } else if (notificationType === "alarm-test") {
+          // 30秒後にアラーム通知をテスト
+          const testTime = Date.now() + 30000; // 30秒後
+          await chrome.alarms.create("TEST_ALARM_30SEC", {
+            when: testTime
+          });
+          log("Test alarm created for 30 seconds later:", new Date(testTime).toLocaleString('ja-JP'));
+        }
+        
+        sendResponse({ ok: true });
+      } catch (error) {
+        log("Error in test notification:", error);
+        sendResponse({ ok: false, error: error.message });
+      }
+    })();
+    
+    return true; // async
+  }
+
   // 通知スケジュール更新ハンドラー
   if (msg?.type === "UPDATE_NOTIFICATION_SCHEDULE") {
     (async () => {
@@ -815,15 +899,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // 既存のアラームをクリア
         await chrome.alarms.clearAll();
         
-        if (enableNotifications) {
+        if (enableNotifications && workStart && workEnd) {
           // 新しいアラームを設定
           await scheduleWorkNotifications(
             workStart, 
             workEnd, 
-            preWorkNotifyMin, 
-            enableWorkDays,
-            enablePreWorkNotification,
-            enableWorkEndNotification
+            preWorkNotifyMin || 15, 
+            enableWorkDays !== false,
+            enablePreWorkNotification !== false,
+            enableWorkEndNotification !== false
           );
         }
         
@@ -841,6 +925,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   (async () => {
     await loadSettings();
+    
+    // 設定読み込み確認
+    log("Settings loaded in MF_BRIDGE_EVENT:", {
+      debug: settings.debug,
+      showNotificationOnSuccess: settings.showNotificationOnSuccess,
+      enableDirectPost: settings.enableDirectPost
+    });
 
     const { action, timestamp, pageUrl, pageTitle } = msg.payload || {};
 
@@ -907,20 +998,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       ok = true;
     }
 
+    // 通知設定をログ出力
+    log("Notification check:", { 
+      ok, 
+      showNotificationOnSuccess: settings.showNotificationOnSuccess,
+      action,
+      timestamp 
+    });
+
     if (ok && settings.showNotificationOnSuccess) {
-      chrome.notifications.create(`mf-bridge-${Date.now()}`, {
-        type: "basic",
-        iconUrl: "icons/icon128.png",
-        title: "勤怠記録を送信しました",
-        message: `${
-          action === "clock_in"
-            ? "出勤"
-            : action === "clock_out"
-            ? "退勤"
-            : "プロジェクト切替"
-        }：${new Date(timestamp).toLocaleString()}`,
-        priority: 0,
-      });
+      log("Creating success notification for action:", action);
+      try {
+        await chrome.notifications.create(`mf-bridge-${Date.now()}`, {
+          type: "basic",
+          iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+          title: "勤怠記録を送信しました",
+          message: `${
+            action === "clock_in"
+              ? "出勤"
+              : action === "clock_out"
+              ? "退勤"
+              : "プロジェクト切替"
+          }：${new Date(timestamp).toLocaleString()}`,
+          priority: 0,
+        });
+        log("Success notification created successfully");
+      } catch (error) {
+        log("Error creating success notification:", error);
+      }
+    } else {
+      log("Success notification skipped:", { ok, showNotificationOnSuccess: settings.showNotificationOnSuccess });
     }
     sendResponse({ ok, spreadsheet: settings.sheetMode });
   })();
@@ -933,55 +1040,109 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // 出社時間通知のスケジューリング関数
 // 指定された出社・退社時間に基づいてアラームを設定する
 async function scheduleWorkNotifications(workStart, workEnd, preWorkNotifyMin, enableWorkDays, enablePreWorkNotification, enableWorkEndNotification) {
-  log("Scheduling work notifications:", { 
+  log("=== scheduleWorkNotifications called ===");
+  log("Parameters:", { 
     workStart, workEnd, preWorkNotifyMin, enableWorkDays,
     enablePreWorkNotification, enableWorkEndNotification
   });
 
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  log("Current time:", {
+    now: now.toLocaleString('ja-JP'),
+    nowMs: now.getTime(),
+    today: today.toLocaleString('ja-JP'),
+    todayMs: today.getTime()
+  });
 
   try {
+    // まず既存のアラームをすべてクリア
+    await chrome.alarms.clearAll();
+    log("All existing alarms cleared");
+
     // 出社前通知の設定
-    if (enablePreWorkNotification) {
+    if (enablePreWorkNotification && workStart) {
       const [workStartHour, workStartMin] = workStart.split(':').map(Number);
+      log("Parsed work start time:", { workStartHour, workStartMin, preWorkNotifyMin });
+      
       const preWorkTime = new Date(today);
       preWorkTime.setHours(workStartHour, workStartMin - preWorkNotifyMin, 0, 0);
+      
+      log("Initial pre-work time:", {
+        preWorkTime: preWorkTime.toLocaleString('ja-JP'),
+        preWorkTimeMs: preWorkTime.getTime(),
+        isPast: preWorkTime <= now
+      });
 
       // 今日の通知が既に過ぎている場合は明日に設定
       if (preWorkTime <= now) {
         preWorkTime.setDate(preWorkTime.getDate() + 1);
+        log("Pre-work time moved to tomorrow:", {
+          preWorkTime: preWorkTime.toLocaleString('ja-JP'),
+          preWorkTimeMs: preWorkTime.getTime()
+        });
       }
 
       await chrome.alarms.create("PRE_WORK_NOTIFICATION", {
         when: preWorkTime.getTime()
       });
       
-      log("Pre-work alarm created:", preWorkTime.toLocaleString('ja-JP'));
+      log("Pre-work alarm created successfully:", {
+        name: "PRE_WORK_NOTIFICATION",
+        when: preWorkTime.getTime(),
+        whenStr: preWorkTime.toLocaleString('ja-JP')
+      });
+    } else {
+      log("Pre-work notification skipped:", { enablePreWorkNotification, workStart });
     }
 
     // 退社時通知の設定
-    if (enableWorkEndNotification) {
+    if (enableWorkEndNotification && workEnd) {
       const [workEndHour, workEndMin] = workEnd.split(':').map(Number);
+      log("Parsed work end time:", { workEndHour, workEndMin });
+      
       const workEndTime = new Date(today);
       workEndTime.setHours(workEndHour, workEndMin, 0, 0);
+      
+      log("Initial work end time:", {
+        workEndTime: workEndTime.toLocaleString('ja-JP'),
+        workEndTimeMs: workEndTime.getTime(),
+        isPast: workEndTime <= now
+      });
 
       // 今日の通知が既に過ぎている場合は明日に設定
       if (workEndTime <= now) {
         workEndTime.setDate(workEndTime.getDate() + 1);
+        log("Work end time moved to tomorrow:", {
+          workEndTime: workEndTime.toLocaleString('ja-JP'),
+          workEndTimeMs: workEndTime.getTime()
+        });
       }
 
       await chrome.alarms.create("WORK_END_NOTIFICATION", {
         when: workEndTime.getTime()
       });
       
-      log("Work end alarm created:", workEndTime.toLocaleString('ja-JP'));
+      log("Work end alarm created successfully:", {
+        name: "WORK_END_NOTIFICATION", 
+        when: workEndTime.getTime(),
+        whenStr: workEndTime.toLocaleString('ja-JP')
+      });
+    } else {
+      log("Work end notification skipped:", { enableWorkEndNotification, workEnd });
     }
 
+    // 作成したアラームの確認
+    const alarms = await chrome.alarms.getAll();
+    log("Final alarm list:", alarms);
+    log("=== scheduleWorkNotifications completed ===");
+
   } catch (error) {
-    log("Error creating alarms:", error);
+    log("Error in scheduleWorkNotifications:", error);
   }
 }
+
 
 // 平日判定関数（月曜日=1, 日曜日=0）
 function isWeekday(date) {
@@ -1035,7 +1196,9 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         settings.workStart, 
         settings.workEnd, 
         settings.preWorkNotifyMin, 
-        settings.enableWorkDays
+        settings.enableWorkDays,
+        settings.enablePreWorkNotification,
+        settings.enableWorkEndNotification
       );
       return;
     }
@@ -1052,7 +1215,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       const minBefore = settings.preWorkNotifyMin || 15;
       await chrome.notifications.create({
         type: 'basic',
-        iconUrl: 'icons/icon48.png',
+        iconUrl: chrome.runtime.getURL('icons/icon48.png'),
         title: '出勤時間のお知らせ',
         message: `${minBefore}分後に出社時刻です。出勤の準備をお忘れなく！`,
         buttons: [
@@ -1070,12 +1233,36 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       
       await chrome.notifications.create({
         type: 'basic',
-        iconUrl: 'icons/icon48.png', 
+        iconUrl: chrome.runtime.getURL('icons/icon48.png'), 
         title: '退社時間のお知らせ',
         message: '退社時刻になりました。お疲れさまでした！',
         buttons: [
           { title: 'MoneyForwardを開く' },
           { title: 'スヌーズ' }
+        ]
+      });
+    } else if (alarm.name.startsWith("SNOOZE_")) {
+      // スヌーズアラーム（5分後の再通知）
+      await chrome.notifications.create(`SNOOZE_REPEAT_${Date.now()}`, {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon48.png'),
+        title: '退社時間のお知らせ（再通知）',
+        message: '退社時刻を過ぎています。お疲れさまでした！',
+        buttons: [
+          { title: 'MoneyForwardを開く' },
+          { title: '再度スヌーズ' }
+        ]
+      });
+    } else if (alarm.name === "TEST_ALARM_30SEC") {
+      // 30秒テストアラーム
+      log("Test alarm fired successfully!");
+      await chrome.notifications.create(`TEST_ALARM_SUCCESS_${Date.now()}`, {
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon48.png'),
+        title: '【テスト成功】アラーム機能',
+        message: 'アラーム機能が正常に動作しています！（30秒後テスト）',
+        buttons: [
+          { title: 'OK' }
         ]
       });
     }
@@ -1137,7 +1324,7 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
       // スヌーズ通知を作成
       await chrome.notifications.create({
         type: 'basic',
-        iconUrl: 'icons/icon48.png',
+        iconUrl: chrome.runtime.getURL('icons/icon48.png'),
         title: 'スヌーズ設定完了',
         message: `${snoozeMinutes}分後に再度通知します。`
       });
