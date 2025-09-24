@@ -1,7 +1,7 @@
-// ===== background.js v1.0.2 =====
+// ===== background.js v1.0.4 =====
 // Brave/Vivaldi/Opera/Chrome => chrome-extension://
 // Microsoft Edge => extension://
-console.log("[MF-Bridge] Background script loaded v1.0.3 - Fixed notification icon paths using chrome.runtime.getURL()");
+console.log("[MF-Bridge] Background script loaded v1.0.4 - Fixed buildUrlWithParams and async functions");
 
 // StorageUtils実装
 const StorageUtils = {
@@ -250,11 +250,11 @@ async function postDirect(payload) {
   }
 }
 
-// ブリッジページモード - bridge.htmlをタブで開いて勤怠データを渡す
-async function openBridgeTab(payload) {
+// URLにパラメータを追加するヘルパー関数
+function buildUrlWithParams(baseUrl, payload) {
   const forced = settings.extUrlScheme || null;
-  const baseUrl = normalizeExtensionScheme(settings.targetPageUrl, forced);
-  const u = new URL(baseUrl);
+  const normalizedUrl = normalizeExtensionScheme(baseUrl, forced);
+  const u = new URL(normalizedUrl);
   u.searchParams.set("source", "moneyforward");
   u.searchParams.set("action", payload.action);
   u.searchParams.set("timestamp", payload.timestamp);
@@ -262,9 +262,13 @@ async function openBridgeTab(payload) {
   u.searchParams.set("ref", payload.pageUrl || "");
   if (payload.team) u.searchParams.set("team", payload.team);
   if (payload.project) u.searchParams.set("project", payload.project);
+  return u.toString();
+}
 
+// ブリッジページを開くヘルパー関数
+async function openBridge(url) {
   const tab = await chrome.tabs.create({
-    url: u.toString(),
+    url: url,
     active: !settings.openInBackground,
   });
 
@@ -273,6 +277,12 @@ async function openBridgeTab(payload) {
       chrome.tabs.remove(tab.id).catch(() => {});
     }, settings.autoCloseMs);
   }
+}
+
+// ブリッジページモード - bridge.htmlをタブで開いて勤怠データを渡す
+async function openBridgeTab(payload) {
+  const url = buildUrlWithParams(settings.targetPageUrl, payload);
+  await openBridge(url);
 }
 
 // ===== Helpers for Spreadsheet mode =====

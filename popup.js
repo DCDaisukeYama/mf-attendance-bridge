@@ -1,6 +1,7 @@
-// ===== popup.js =====
+// ===== popup.js v1.0.7 =====
 // Chrome拡張機能のポップアップページメインスクリプト
 // プロジェクト切り替え、勤怠管理、スプレッドシート連携機能を提供
+// 修正版: async関数呼び出し修正、プロジェクト選択機能復元
 
 // ローカルストレージで使用するキー定数
 const KEY = {
@@ -521,6 +522,659 @@ function loadAttendanceLogs() {
   });
 })();
 
+// ===== プロジェクトメンバー管理関数群 =====
+
+// グローバル変数：メンバーデータのキャッシュ
+let currentMemberData = null;
+let currentSelectedTeam = null;
+let selectedMembers = {}; // プロジェクトごとの選択メンバー {projectId: [memberIds]}
+let currentActiveSelectionGroup = null; // 現在アクティブな選択グループ
+
+// プロジェクトメンバーカードの表示/非表示を制御
+function toggleProjectMemberCard(show) {
+  const memberCard = document.getElementById("projectMemberCard");
+  if (memberCard) {
+    memberCard.style.display = show ? "block" : "none";
+  }
+}
+
+// チーム内プロジェクトタブを生成・表示
+function displayProjectTabs(teamName, memberData) {
+  const projectTabsContainer = document.getElementById("projectTabs");
+  const membersListContainer = document.getElementById("membersList");
+
+  if (!projectTabsContainer || !membersListContainer || !memberData || !memberData.teams) {
+    return;
+  }
+
+  const team = memberData.teams[teamName];
+  if (!team || !team.groups) {
+    projectTabsContainer.style.display = "none";
+    return;
+  }
+
+  // タブボタンを生成
+  projectTabsContainer.innerHTML = "";
+  const groupNames = Object.keys(team.groups);
+
+  if (groupNames.length <= 1) {
+    // 1つ以下のグループの場合はタブを非表示
+    projectTabsContainer.style.display = "none";
+    if (groupNames.length === 1) {
+      displayGroupMembers(teamName, groupNames[0], memberData);
+    }
+    return;
+  }
+
+  // 複数グループの場合はタブを表示
+  projectTabsContainer.style.display = "flex";
+
+  groupNames.forEach((groupName, index) => {
+    const tabButton = document.createElement("button");
+    tabButton.className = `project-tab ${index === 0 ? "active" : ""}`;
+    tabButton.textContent = `${teamName}${groupName}`;
+    tabButton.dataset.team = teamName;
+    tabButton.dataset.group = groupName;
+
+    tabButton.addEventListener("click", () => {
+      // 全てのタブのアクティブ状態をリセット
+      document.querySelectorAll(".project-tab").forEach(tab => {
+        tab.classList.remove("active");
+      });
+
+      // クリックされたタブをアクティブに
+      tabButton.classList.add("active");
+
+      // 対応するグループのメンバーを表示
+      displayGroupMembers(teamName, groupName, memberData);
+    });
+
+    projectTabsContainer.appendChild(tabButton);
+  });
+
+  // 最初のタブのメンバーを表示
+  if (groupNames.length > 0) {
+    displayGroupMembers(teamName, groupNames[0], memberData);
+  }
+}
+
+// グループのメンバーを表示
+function displayGroupMembers(teamName, groupName, memberData) {
+  const membersListContainer = document.getElementById("membersList");
+  const memberStatusContainer = document.getElementById("memberStatus");
+
+  if (!membersListContainer) {
+    return;
+  }
+
+  const team = memberData.teams?.[teamName];
+  const group = team?.groups?.[groupName];
+
+  if (!group || !group.members || group.members.length === 0) {
+    membersListContainer.innerHTML = '<div class="members-empty">メンバーが見つかりません</div>';
+    if (memberStatusContainer) {
+      memberStatusContainer.textContent = "";
+    }
+    return;
+  }
+
+  // メンバーサマリー情報
+  const keyHolderCount = group.members.filter(member => member.isKeyHolder).length;
+  const summaryHtml = `
+    <div class="member-summary">
+      <span>メンバー数: <span class="member-count">${group.members.length}名</span></span>
+      <span>鍵保有者: <span class="member-count">${keyHolderCount}名</span></span>
+    </div>
+  `;
+
+  // メンバーリストのHTML生成
+  const membersHtml = group.members.map(member => {
+    const keyHolderBadge = member.isKeyHolder
+      ? '<span class="key-holder-badge">鍵保有者</span>'
+      : '';
+
+    return `
+      <div class="member-item">
+        <div class="member-info">
+          <span class="member-number">${member.number}</span>
+          <span class="member-name">${member.name}</span>
+        </div>
+        <div class="member-badges">
+          ${keyHolderBadge}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  membersListContainer.innerHTML = summaryHtml + membersHtml;
+
+  // ステータス更新
+  if (memberStatusContainer) {
+    const updateTime = new Date().toLocaleString("ja-JP");
+    memberStatusContainer.textContent = `最終更新: ${updateTime}`;
+  }
+}
+
+// メンバーデータの取得と表示
+async function loadAndDisplayMembers(forceRefresh = false) {
+  const membersLoadingContainer = document.getElementById("membersLoading");
+  const memberStatusContainer = document.getElementById("memberStatus");
+
+  try {
+    // ローディング表示
+    if (membersLoadingContainer) {
+      membersLoadingContainer.style.display = "block";
+    }
+
+    // メンバー情報用スプレッドシート設定を取得
+    const settings = await chrome.storage.sync.get(["memberSpreadsheetUrl"]);
+    if (!settings.memberSpreadsheetUrl) {
+      throw new Error("メンバー情報スプレッドシートURLが設定されていません。設定ページで「メンバー情報スプレッドシート URL」を設定してください。");
+    }
+
+    // SpreadsheetManagerを使用してメンバーデータを取得
+    if (!window.SpreadsheetManager) {
+      throw new Error("SpreadsheetManagerが読み込まれていません。ページを再読み込みしてください。");
+    }
+    const spreadsheetManager = new window.SpreadsheetManager(settings.memberSpreadsheetUrl);
+    currentMemberData = await spreadsheetManager.fetchMemberDataWithCache(forceRefresh);
+
+    // 現在選択されているチームに基づいてメンバーを表示
+    if (currentSelectedTeam && currentMemberData.teams[currentSelectedTeam]) {
+      toggleProjectMemberCard(true);
+      displayProjectTabs(currentSelectedTeam, currentMemberData);
+    } else {
+      toggleProjectMemberCard(false);
+    }
+
+    // ローディング非表示
+    if (membersLoadingContainer) {
+      membersLoadingContainer.style.display = "none";
+    }
+
+    // 成功ステータス
+    if (memberStatusContainer) {
+      const updateTime = new Date().toLocaleString("ja-JP");
+      const summary = currentMemberData.summary;
+      memberStatusContainer.innerHTML = `
+        <span style="color: var(--ok);">✓ 読み込み完了 (${updateTime})</span><br>
+        <span style="font-size: 10px;">チーム数: ${summary.teamCount} | 総メンバー数: ${summary.totalMembers}名 | 鍵保有者: ${summary.keyHolderCount}名</span>
+      `;
+    }
+
+  } catch (error) {
+    console.error("メンバーデータの読み込みエラー:", error);
+
+    // エラー表示
+    if (membersLoadingContainer) {
+      membersLoadingContainer.innerHTML = `<div class="members-empty" style="color: var(--danger);">エラー: ${error.message}</div>`;
+    }
+
+    if (memberStatusContainer) {
+      memberStatusContainer.innerHTML = `<span style="color: var(--danger);">✗ 読み込み失敗: ${error.message}</span>`;
+    }
+
+    toggleProjectMemberCard(false);
+  }
+}
+
+// チーム選択変更時のメンバー表示更新
+async function updateMemberDisplayForTeam(teamName) {
+  currentSelectedTeam = teamName;
+
+  if (currentMemberData && currentMemberData.teams[teamName]) {
+    toggleProjectMemberCard(true);
+    displayProjectTabs(teamName, currentMemberData);
+    // メンバー選択UIも表示
+    toggleMemberSelectionCard(true);
+    displayMemberSelectionTabs(teamName, currentMemberData);
+  } else if (currentMemberData) {
+    // データはあるが、選択されたチームがスプレッドシートに存在しない場合
+    toggleProjectMemberCard(false);
+    toggleMemberSelectionCard(false);
+    const memberStatusContainer = document.getElementById("memberStatus");
+    if (memberStatusContainer) {
+      memberStatusContainer.innerHTML = `<span style="color: var(--warning);">選択されたチーム「${teamName}」はスプレッドシートに存在しません</span>`;
+    }
+  } else {
+    // データがまだ読み込まれていない場合
+    await loadAndDisplayMembers();
+  }
+}
+
+// ===== メンバー選択機能 =====
+
+// メンバー選択カードの表示/非表示を制御
+function toggleMemberSelectionCard(show) {
+  const selectionCard = document.getElementById("memberSelectionCard");
+  if (selectionCard) {
+    selectionCard.style.display = show ? "block" : "none";
+  }
+}
+
+// メンバー選択タブを生成・表示
+function displayMemberSelectionTabs(teamName, memberData) {
+  const selectionTabsContainer = document.getElementById("memberSelectionTabs");
+  const selectionListContainer = document.getElementById("memberSelectionList");
+
+  if (!selectionTabsContainer || !selectionListContainer || !memberData || !memberData.teams) {
+    return;
+  }
+
+  const team = memberData.teams[teamName];
+  if (!team || !team.groups) {
+    selectionTabsContainer.style.display = "none";
+    return;
+  }
+
+  // タブボタンを生成
+  selectionTabsContainer.innerHTML = "";
+  const groupNames = Object.keys(team.groups);
+
+  if (groupNames.length <= 1) {
+    // 1つ以下のグループの場合はタブを非表示
+    selectionTabsContainer.style.display = "none";
+    if (groupNames.length === 1) {
+      displayMemberSelectionList(teamName, groupNames[0], memberData).catch(error => {
+        console.error('Error displaying single group member list:', error);
+      });
+    }
+    return;
+  }
+
+  // 複数グループの場合はタブを表示
+  selectionTabsContainer.style.display = "flex";
+
+  groupNames.forEach((groupName, index) => {
+    const tabButton = document.createElement("button");
+    tabButton.className = `member-selection-tab ${index === 0 ? "active" : ""}`;
+    tabButton.textContent = groupName;
+    tabButton.dataset.team = teamName;
+    tabButton.dataset.group = groupName;
+
+    tabButton.addEventListener("click", () => {
+      // 全てのタブのアクティブ状態をリセット
+      document.querySelectorAll(".member-selection-tab").forEach(tab => {
+        tab.classList.remove("active");
+      });
+
+      // クリックされたタブをアクティブに
+      tabButton.classList.add("active");
+
+      // 対応するグループのメンバー選択リストを表示
+      displayMemberSelectionList(teamName, groupName, memberData).catch(error => {
+        console.error('Error displaying member selection list:', error);
+      });
+    });
+
+    selectionTabsContainer.appendChild(tabButton);
+  });
+
+  // 最初のタブのメンバー選択リストを表示
+  if (groupNames.length > 0) {
+    currentActiveSelectionGroup = groupNames[0];
+    displayMemberSelectionList(teamName, groupNames[0], memberData).catch(error => {
+      console.error('Error displaying initial member selection list:', error);
+    });
+  }
+}
+
+// メンバー選択リストを表示
+async function displayMemberSelectionList(teamName, groupName, memberData) {
+  const selectionListContainer = document.getElementById("memberSelectionList");
+  const selectionStatusContainer = document.getElementById("memberSelectionStatus");
+
+  if (!selectionListContainer) {
+    return;
+  }
+
+  currentActiveSelectionGroup = groupName;
+
+  const team = memberData.teams?.[teamName];
+  const group = team?.groups?.[groupName];
+
+  if (!group || !group.members || group.members.length === 0) {
+    selectionListContainer.innerHTML = '<div class="member-selection-empty">メンバーが見つかりません</div>';
+    if (selectionStatusContainer) {
+      selectionStatusContainer.textContent = "";
+    }
+    return;
+  }
+
+  // 現在のプロジェクトID（チーム名とプロジェクト名から）
+  const currentProjectKey = await getCurrentProjectKey();
+
+  // 選択状況サマリー情報
+  const selectedCount = (selectedMembers[currentProjectKey] || []).length;
+  const summaryHtml = `
+    <div class="member-selection-summary">
+      <span>グループ: <span class="selected-member-count">${groupName}</span></span>
+      <span>選択中: <span class="selected-member-count">${selectedCount}名</span></span>
+    </div>
+  `;
+
+  // メンバー選択リストのHTML生成
+  const membersHtml = group.members.map(member => {
+    const memberKey = `${member.team}-${member.group}-${member.number}`;
+    const isSelected = (selectedMembers[currentProjectKey] || []).includes(memberKey);
+    const keyHolderBadge = member.isKeyHolder
+      ? '<span class="key-holder-badge">鍵保有者</span>'
+      : '';
+
+    return `
+      <div class="member-selection-item ${isSelected ? 'selected' : ''}" data-member-key="${memberKey}">
+        <input type="checkbox" class="member-checkbox" ${isSelected ? 'checked' : ''}
+               data-member-key="${memberKey}">
+        <div class="member-selection-info">
+          <span class="member-selection-number">${member.number}</span>
+          <span class="member-selection-name">${member.name}</span>
+        </div>
+        <div class="member-selection-badges">
+          ${keyHolderBadge}
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  selectionListContainer.innerHTML = summaryHtml + membersHtml;
+
+  // チェックボックスのイベントリスナーを追加
+  addMemberSelectionEventListeners();
+
+  // ステータス更新
+  updateMemberSelectionStatus().catch(error => {
+    console.error('Error updating member selection status:', error);
+  });
+}
+
+// メンバー選択のイベントリスナーを追加
+function addMemberSelectionEventListeners() {
+  // チェックボックスのクリックイベント
+  document.querySelectorAll('.member-checkbox').forEach(checkbox => {
+    checkbox.addEventListener('change', (e) => {
+      e.stopPropagation();
+      const memberKey = e.target.dataset.memberKey;
+      const parentItem = e.target.closest('.member-selection-item');
+
+      if (e.target.checked) {
+        addSelectedMember(memberKey).catch(error => console.error('Error adding member:', error));
+        parentItem.classList.add('selected');
+      } else {
+        removeSelectedMember(memberKey).catch(error => console.error('Error removing member:', error));
+        parentItem.classList.remove('selected');
+      }
+
+      updateMemberSelectionStatus().catch(error => console.error('Error updating status:', error));
+    });
+  });
+
+  // 行のクリックでチェックボックスをトグル
+  document.querySelectorAll('.member-selection-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      if (e.target.type !== 'checkbox') {
+        const checkbox = item.querySelector('.member-checkbox');
+        checkbox.checked = !checkbox.checked;
+        checkbox.dispatchEvent(new Event('change'));
+      }
+    });
+  });
+}
+
+// 選択メンバーを追加
+async function addSelectedMember(memberKey) {
+  const currentProjectKey = await getCurrentProjectKey();
+  if (!selectedMembers[currentProjectKey]) {
+    selectedMembers[currentProjectKey] = [];
+  }
+  if (!selectedMembers[currentProjectKey].includes(memberKey)) {
+    selectedMembers[currentProjectKey].push(memberKey);
+  }
+}
+
+// 選択メンバーを削除
+async function removeSelectedMember(memberKey) {
+  const currentProjectKey = await getCurrentProjectKey();
+  if (selectedMembers[currentProjectKey]) {
+    selectedMembers[currentProjectKey] = selectedMembers[currentProjectKey].filter(key => key !== memberKey);
+  }
+}
+
+// 現在のプロジェクトキーを取得
+async function getCurrentProjectKey() {
+  // 現在のデータを取得
+  const currentData = await loadAll();
+  const selectedTeam = currentData.teams.find((t) => t.id === currentData.activeTeamId);
+  const selectedProject = selectedTeam?.projects?.find((p) => p.id === currentData.activeProjectId);
+  return selectedProject ? `${selectedTeam.name}-${selectedProject.name}` : 'default';
+}
+
+// 全選択
+async function selectAllMembersInCurrentGroup() {
+  if (!currentMemberData || !currentSelectedTeam || !currentActiveSelectionGroup) {
+    return;
+  }
+
+  const team = currentMemberData.teams[currentSelectedTeam];
+  const group = team?.groups?.[currentActiveSelectionGroup];
+
+  if (group && group.members) {
+    const currentProjectKey = await getCurrentProjectKey();
+    if (!selectedMembers[currentProjectKey]) {
+      selectedMembers[currentProjectKey] = [];
+    }
+
+    group.members.forEach(member => {
+      const memberKey = `${member.team}-${member.group}-${member.number}`;
+      if (!selectedMembers[currentProjectKey].includes(memberKey)) {
+        selectedMembers[currentProjectKey].push(memberKey);
+      }
+    });
+
+    // UIを更新
+    await displayMemberSelectionList(currentSelectedTeam, currentActiveSelectionGroup, currentMemberData);
+  }
+}
+
+// 全解除
+async function clearAllMembersInCurrentGroup() {
+  if (!currentMemberData || !currentSelectedTeam || !currentActiveSelectionGroup) {
+    return;
+  }
+
+  const team = currentMemberData.teams[currentSelectedTeam];
+  const group = team?.groups?.[currentActiveSelectionGroup];
+
+  if (group && group.members) {
+    const currentProjectKey = await getCurrentProjectKey();
+    if (selectedMembers[currentProjectKey]) {
+      group.members.forEach(member => {
+        const memberKey = `${member.team}-${member.group}-${member.number}`;
+        selectedMembers[currentProjectKey] = selectedMembers[currentProjectKey].filter(key => key !== memberKey);
+      });
+    }
+
+    // UIを更新
+    await displayMemberSelectionList(currentSelectedTeam, currentActiveSelectionGroup, currentMemberData);
+  }
+}
+
+// メンバー選択の確定
+async function confirmMemberSelection() {
+  const currentProjectKey = await getCurrentProjectKey();
+  const selectedMemberKeys = selectedMembers[currentProjectKey] || [];
+
+  if (selectedMemberKeys.length === 0) {
+    alert('メンバーが選択されていません。');
+    return;
+  }
+
+  // 選択されたメンバー情報を表示用に更新
+  await updateProjectMemberDisplay();
+
+  // 成功メッセージ
+  const selectionStatusContainer = document.getElementById("memberSelectionStatus");
+  if (selectionStatusContainer) {
+    selectionStatusContainer.innerHTML = `<span style="color: var(--ok);">✓ ${selectedMemberKeys.length}名のメンバーを確定しました</span>`;
+    setTimeout(async () => {
+      await updateMemberSelectionStatus();
+    }, 3000);
+  }
+
+  // 選択データを保存
+  await saveMemberSelections();
+}
+
+// メンバー選択状況の更新
+async function updateMemberSelectionStatus() {
+  const selectionStatusContainer = document.getElementById("memberSelectionStatus");
+  if (!selectionStatusContainer) {
+    return;
+  }
+
+  const currentProjectKey = await getCurrentProjectKey();
+  const selectedCount = (selectedMembers[currentProjectKey] || []).length;
+  const updateTime = new Date().toLocaleString("ja-JP");
+
+  selectionStatusContainer.innerHTML = `
+    <span>選択中: <span class="selected-member-count">${selectedCount}名</span></span>
+    <span style="margin-left: 16px; font-size: 10px;">最終更新: ${updateTime}</span>
+  `;
+}
+
+// プロジェクトメンバー表示を更新（選択されたメンバーのみ表示）
+async function updateProjectMemberDisplay() {
+  const currentProjectKey = await getCurrentProjectKey();
+  const selectedMemberKeys = selectedMembers[currentProjectKey] || [];
+
+  if (selectedMemberKeys.length === 0) {
+    toggleProjectMemberCard(false);
+    return;
+  }
+
+  // 選択されたメンバーの詳細情報を取得
+  const selectedMemberDetails = getSelectedMemberDetails(selectedMemberKeys);
+
+  // プロジェクトメンバーカードに表示
+  displaySelectedMembers(selectedMemberDetails);
+}
+
+// 選択されたメンバーの詳細情報を取得
+function getSelectedMemberDetails(selectedMemberKeys) {
+  const memberDetails = [];
+
+  if (!currentMemberData || !currentMemberData.teams) {
+    return memberDetails;
+  }
+
+  selectedMemberKeys.forEach(memberKey => {
+    const [teamName, groupName, memberNumber] = memberKey.split('-');
+    const team = currentMemberData.teams[teamName];
+    const group = team?.groups?.[groupName];
+    const member = group?.members?.find(m => m.number === memberNumber);
+
+    if (member) {
+      memberDetails.push(member);
+    }
+  });
+
+  return memberDetails;
+}
+
+// 選択されたメンバーを表示
+function displaySelectedMembers(selectedMemberDetails) {
+  const membersListContainer = document.getElementById("membersList");
+  const memberStatusContainer = document.getElementById("memberStatus");
+
+  if (!membersListContainer) {
+    return;
+  }
+
+  if (selectedMemberDetails.length === 0) {
+    membersListContainer.innerHTML = '<div class="members-empty">選択されたメンバーがありません</div>';
+    if (memberStatusContainer) {
+      memberStatusContainer.textContent = "";
+    }
+    return;
+  }
+
+  // メンバーサマリー情報
+  const keyHolderCount = selectedMemberDetails.filter(member => member.isKeyHolder).length;
+  const summaryHtml = `
+    <div class="member-summary">
+      <span>選択メンバー数: <span class="member-count">${selectedMemberDetails.length}名</span></span>
+      <span>鍵保有者: <span class="member-count">${keyHolderCount}名</span></span>
+    </div>
+  `;
+
+  // グループ別に整理
+  const membersByGroup = {};
+  selectedMemberDetails.forEach(member => {
+    if (!membersByGroup[member.group]) {
+      membersByGroup[member.group] = [];
+    }
+    membersByGroup[member.group].push(member);
+  });
+
+  // メンバーリストのHTML生成（グループごと）
+  let membersHtml = '';
+  Object.keys(membersByGroup).forEach(groupName => {
+    membersHtml += `<div class="group-header">${groupName}</div>`;
+    membersByGroup[groupName].forEach(member => {
+      const keyHolderBadge = member.isKeyHolder
+        ? '<span class="key-holder-badge">鍵保有者</span>'
+        : '';
+
+      membersHtml += `
+        <div class="member-item">
+          <div class="member-info">
+            <span class="member-number">${member.number}</span>
+            <span class="member-name">${member.name}</span>
+          </div>
+          <div class="member-badges">
+            ${keyHolderBadge}
+          </div>
+        </div>
+      `;
+    });
+  });
+
+  membersListContainer.innerHTML = summaryHtml + membersHtml;
+
+  // ステータス更新
+  if (memberStatusContainer) {
+    const updateTime = new Date().toLocaleString("ja-JP");
+    memberStatusContainer.textContent = `確定済み: ${updateTime}`;
+  }
+
+  toggleProjectMemberCard(true);
+}
+
+// ===== メンバー選択データの保存・読み込み =====
+
+// メンバー選択データを保存
+async function saveMemberSelections() {
+  try {
+    await chrome.storage.sync.set({
+      selectedMembers: selectedMembers
+    });
+    console.log('メンバー選択データを保存しました', selectedMembers);
+  } catch (error) {
+    console.error('メンバー選択データの保存エラー:', error);
+  }
+}
+
+// メンバー選択データを読み込み
+async function loadMemberSelections() {
+  try {
+    const saved = await chrome.storage.sync.get(['selectedMembers']);
+    selectedMembers = saved.selectedMembers || {};
+    console.log('メンバー選択データを読み込みました', selectedMembers);
+  } catch (error) {
+    console.error('メンバー選択データの読み込みエラー:', error);
+    selectedMembers = {};
+  }
+}
+
 // ===== メイン処理：DOM読み込み完了時の初期化 =====
 document.addEventListener("DOMContentLoaded", async () => {
   // スプラッシュスクリーンの処理
@@ -577,6 +1231,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   const attendanceStatusEl = document.getElementById("attendanceStatus");     // 出勤状態表示
   const clockInShortcutBtn = document.getElementById("clockInShortcut");     // MoneyForwardショートカット
 
+  // プロジェクトメンバー関連要素
+  const refreshMembersBtn = document.getElementById("refreshMembers");        // メンバー情報再読み込みボタン
+
+  // メンバー選択関連要素
+  const selectAllMembersBtn = document.getElementById("selectAllMembers");    // 全選択ボタン
+  const clearAllMembersBtn = document.getElementById("clearAllMembers");      // 全解除ボタン
+  const confirmMemberSelectionBtn = document.getElementById("confirmMemberSelection"); // 確定ボタン
+
   // 一時的な選択状態（切替ボタンは選択が変更された時のみ表示）
   let selectedTeamId = data.activeTeamId;
   let selectedProjectId = data.activeProjectId;
@@ -615,6 +1277,38 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // カスタムセレクトのグローバルイベントリスナー設定
   setupCustomSelectEventListeners();
+
+  // メンバー再読み込みボタンのイベントリスナー
+  if (refreshMembersBtn) {
+    refreshMembersBtn.addEventListener("click", async () => {
+      await loadAndDisplayMembers(true); // 強制リフレッシュ
+    });
+  }
+
+  // メンバー選択関連のイベントリスナー
+  if (selectAllMembersBtn) {
+    selectAllMembersBtn.addEventListener("click", () => {
+      selectAllMembersInCurrentGroup().catch(error => {
+        console.error('Error selecting all members:', error);
+      });
+    });
+  }
+
+  if (clearAllMembersBtn) {
+    clearAllMembersBtn.addEventListener("click", () => {
+      clearAllMembersInCurrentGroup().catch(error => {
+        console.error('Error clearing all members:', error);
+      });
+    });
+  }
+
+  if (confirmMemberSelectionBtn) {
+    confirmMemberSelectionBtn.addEventListener("click", () => {
+      confirmMemberSelection().catch(error => {
+        console.error('Error confirming member selection:', error);
+      });
+    });
+  }
 
   // 通知機能オンオフのイベントハンドラー
   // チェックボックスの状態変更時に詳細設定の有効/無効を切り替える
@@ -689,6 +1383,21 @@ document.addEventListener("DOMContentLoaded", async () => {
         fillProjectSelect(projectSelect, team, selectedProjectId);
         updateProjectCustomSelect();
         refreshSwitchVisibility();
+
+        // メンバー表示を更新
+        if (team) {
+          updateMemberDisplayForTeam(team.name).catch(error => {
+            console.error('Error updating member display:', error);
+          });
+
+          // 保存された選択メンバーがある場合は表示を更新
+          setTimeout(async () => {
+            const currentProjectKey = await getCurrentProjectKey();
+            if (selectedMembers[currentProjectKey] && selectedMembers[currentProjectKey].length > 0) {
+              await updateProjectMemberDisplay();
+            }
+          }, 100);
+        }
       },
       "T"
     );
@@ -735,6 +1444,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 勤怠ステータスの初期表示
   const attendanceLogs = loadAttendanceLogs();
   updateAttendanceStatus(attendanceStatusEl, clockInShortcutBtn, attendanceLogs, data.breakStart, data.breakEnd);
+
+  // メンバー選択データの読み込み
+  await loadMemberSelections();
+
+  // 初期メンバーデータ読み込み
+  const initialTeam = data.teams.find((t) => t.id === selectedTeamId);
+  if (initialTeam) {
+    currentSelectedTeam = initialTeam.name;
+    await loadAndDisplayMembers();
+
+    // 保存された選択メンバーがある場合は表示を更新
+    const currentProjectKey = await getCurrentProjectKey();
+    if (selectedMembers[currentProjectKey] && selectedMembers[currentProjectKey].length > 0) {
+      await updateProjectMemberDisplay();
+    }
+  }
 
   // MoneyForwardショートカットボタンのイベントリスナー
   clockInShortcutBtn.addEventListener("click", () => {
