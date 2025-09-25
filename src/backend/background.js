@@ -960,6 +960,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (settings.sheetMode) {
       if (action === "clock_in") {
         await setSeg({ start: timestamp, team, project });
+        // 出勤時もbridge.htmlでログ記録
+        if (settings.targetPageUrl) {
+          const url = buildUrlWithParams(settings.targetPageUrl, payload);
+          await openBridge(url);
+        }
       } else if (action === "project_switch") {
         const prev = await getSeg();
         if (prev) {
@@ -980,32 +985,47 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const prev = await getSeg();
         if (prev) await finalizeSegment(timestamp, prev);
         await clearSeg();
+
+        // 退勤時もbridge.htmlでログ記録
+        if (settings.targetPageUrl) {
+          const url = buildUrlWithParams(settings.targetPageUrl, payload);
+          await openBridge(url);
+        }
       }
     }
 
     // ---- 既存動作（任意の API POST / bridge.html オープン）----
-    // project_switch時に退勤中の場合はブリッジページを開かない
-    if (action === "project_switch") {
-      const currentSeg = await getSeg();
-      if (!currentSeg) {
-        log("Project switch during off-duty - bridge.html will not be opened");
-        return; // 早期リターンでブリッジページ開封とAPI送信をスキップ
-      }
-    }
-    
-    let ok = false;
-    if (settings.enableDirectPost && settings.targetApiUrl) {
-      try {
-        ok = await postDirect(payload);
-      } catch (e) {
-        log("direct post failed:", e);
-        ok = false;
-      }
-    }
+    let ok = true; // デフォルトでは成功とする
 
-    if (!settings.enableDirectPost || !ok) {
-      await openBridgeTab(payload);
+    // スプレッドシートモードの場合、clock_in/clock_outは既に処理済み
+    if (settings.sheetMode && (action === "clock_in" || action === "clock_out")) {
+      log(`Spreadsheet mode: ${action} already processed with bridge.html`);
+      // スプレッドシートモードでは既にbridge.htmlが開かれているので追加処理は不要
       ok = true;
+    } else {
+      // project_switch時に退勤中の場合はブリッジページを開かない
+      if (action === "project_switch") {
+        const currentSeg = await getSeg();
+        if (!currentSeg) {
+          log("Project switch during off-duty - bridge.html will not be opened");
+          return; // 早期リターンでブリッジページ開封とAPI送信をスキップ
+        }
+      }
+
+      ok = false;
+      if (settings.enableDirectPost && settings.targetApiUrl) {
+        try {
+          ok = await postDirect(payload);
+        } catch (e) {
+          log("direct post failed:", e);
+          ok = false;
+        }
+      }
+
+      if (!settings.enableDirectPost || !ok) {
+        await openBridgeTab(payload);
+        ok = true;
+      }
     }
 
     // 通知設定をログ出力
