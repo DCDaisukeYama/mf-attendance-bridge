@@ -444,3 +444,348 @@ input[type="checkbox"] {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--fg);
 }
+
+/* ===== プロジェクトメンバー関連スタイル ===== */
+
+/* プロジェクトタブ */
+.project-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.project-tab {
+  padding: 6px 12px;
+  font-size: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--muted);
+}
+
+.project-tab:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.project-tab.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* メンバーリスト */
+.members-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.member-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  transition: background-color 0.2s ease;
+}
+
+.member-item:last-child {
+  border-bottom: none;
+}
+
+.member-item:hover {
+  background: var(--hover);
+}
+
+.member-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.member-number {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: monospace;
+  min-width: 20px;
+}
+
+.member-name {
+  font-size: 13px;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.member-badges {
+  display: flex;
+  gap: 4px;
+}
+
+.key-holder-badge {
+  background: var(--warning);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.group-header {
+  background: var(--head);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+}
+
+.group-section {
+  border-bottom: 1px solid var(--line);
+}
+
+.group-section:last-child {
+  border-bottom: none;
+}
+
+.members-empty {
+  text-align: center;
+  padding: 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.member-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--head);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.member-count {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* ===== メンバー選択関連スタイル ===== */
+
+/* メンバー選択タブ */
+.member-selection-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.member-selection-tab {
+  padding: 6px 12px;
+  font-size: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--muted);
+}
+
+.member-selection-tab:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.member-selection-tab.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* メンバー選択リスト */
+.member-selection-list {
+  max-height: 250px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.member-selection-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  transition: background-color 0.2s ease;
+  cursor: pointer;
+}
+
+.member-selection-item:last-child {
+  border-bottom: none;
+}
+
+.member-selection-item:hover {
+  background: var(--hover);
+}
+
+.member-selection-item.selected {
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.member-checkbox {
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.member-selection-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.member-selection-number {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: monospace;
+  min-width: 20px;
+}
+
+.member-selection-name {
+  font-size: 13px;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.member-selection-badges {
+  display: flex;
+  gap: 4px;
+}
+
+.member-selection-group-header {
+  background: var(--head);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+}
+
+.member-selection-empty {
+  text-align: center;
+  padding: 20px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.member-selection-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--head);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.selected-member-count {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* ===== モーダルスタイル ===== */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  opacity: 0;
+  animation: fadeInModal 0.3s ease forwards;
+}
+
+.modal-content {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  width: 90%;
+  max-width: 500px;
+  max-height: 80%;
+  overflow: hidden;
+  transform: translateY(20px);
+  animation: slideInModal 0.3s ease forwards;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--head);
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.close-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
+
+.modal-body {
+  padding: 20px;
+  max-height: calc(80vh - 100px);
+  overflow-y: auto;
+}
+
+@keyframes fadeInModal {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInModal {
+  to {
+    transform: translateY(0);
+  }
+}
