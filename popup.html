@@ -64,9 +64,29 @@
       <div class="card">
         <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
           <h3 style="margin: 0; font-size: 14px;">現在のプロジェクト</h3>
-          <button id="switchBtn" class="btn small" style="display: none;">切替実行</button>
+          <div class="row" style="gap: 4px;">
+            <button id="showProjectMembers" class="btn small">所属メンバー</button>
+            <button id="switchBtn" class="btn small" style="display: none;">切替実行</button>
+          </div>
         </div>
         <div id="activeLabel" class="muted">読み込み中...</div>
+
+        <!-- 所属メンバー表示エリア（アクティブプロジェクトカード内） -->
+        <div id="activeProjectMembers" style="display: none; margin-top: 12px; border-top: 1px solid var(--border); padding-top: 12px;">
+          <div class="row" style="justify-content: space-between; margin-bottom: 8px;">
+            <h4 style="margin: 0; font-size: 13px;">所属メンバー</h4>
+            <div class="row" style="gap: 4px;">
+              <button id="editProjectMembers" class="btn small" style="background: var(--accent); color: white;">メンバー編集</button>
+              <button id="refreshMembers" class="btn small" title="メンバー情報を再読み込み">🔄</button>
+            </div>
+          </div>
+          <!-- メンバーリスト表示 -->
+          <div id="membersList" class="members-list">
+            <div id="membersLoading" class="muted small">読み込み中...</div>
+          </div>
+          <!-- メンバー情報のステータス -->
+          <div id="memberStatus" class="small muted" style="margin-top: 8px;"></div>
+        </div>
       </div>
 
       <!-- プロジェクト選択UI -->
@@ -118,10 +138,10 @@
         </details>
       </div>
 
-      <!-- メンバー選択カード -->
+      <!-- メンバー編集カード -->
       <div id="memberSelectionCard" class="card" style="display: none;">
         <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
-          <h3 style="margin: 0; font-size: 14px;">メンバー選択</h3>
+          <h3 style="margin: 0; font-size: 14px;">メンバー編集</h3>
           <div class="row" style="gap: 4px;">
             <button id="selectAllMembers" class="btn small">全選択</button>
             <button id="clearAllMembers" class="btn small">全解除</button>
@@ -143,25 +163,26 @@
         <div id="memberSelectionStatus" class="small muted" style="margin-top: 8px;"></div>
       </div>
 
-      <!-- プロジェクトメンバー表示カード -->
-      <div id="projectMemberCard" class="card" style="display: none;">
+
+      <!-- 全チームメンバー表示カード -->
+      <div id="allMembersCard" class="card">
         <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
-          <h3 style="margin: 0; font-size: 14px;">プロジェクトメンバー</h3>
-          <button id="refreshMembers" class="btn small" title="メンバー情報を再読み込み">🔄</button>
+          <h3 style="margin: 0; font-size: 14px;">全チームメンバー</h3>
+          <button id="refreshAllMembers" class="btn small" title="メンバー情報を再読み込み">🔄</button>
         </div>
 
         <!-- チーム内プロジェクトタブ -->
-        <div id="projectTabs" class="project-tabs" style="margin-bottom: 12px; display: none;">
+        <div id="allProjectTabs" class="project-tabs" style="margin-bottom: 12px; display: none;">
           <!-- タブボタンが動的に追加される -->
         </div>
 
-        <!-- メンバーリスト表示 -->
-        <div id="membersList" class="members-list">
-          <div id="membersLoading" class="muted small">読み込み中...</div>
+        <!-- 全メンバーリスト表示 -->
+        <div id="allMembersList" class="members-list">
+          <div id="allMembersLoading" class="muted small">読み込み中...</div>
         </div>
 
-        <!-- メンバー情報のステータス -->
-        <div id="memberStatus" class="small muted" style="margin-top: 8px;"></div>
+        <!-- 全メンバー情報のステータス -->
+        <div id="allMemberStatus" class="small muted" style="margin-top: 8px;"></div>
       </div>
 
       <!-- 設定セクション -->
@@ -233,6 +254,39 @@
             <div id="workTimeStatus" class="small muted" style="margin-top: 4px;"></div>
           </div>
         </details>
+      </div>
+    </div>
+
+    <!-- メンバー編集モーダル -->
+    <div id="memberEditModal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>メンバー編集</h3>
+          <button id="closeMemberEditModal" class="btn small close-btn">×</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+            <div class="row" style="gap: 4px;">
+              <button id="selectAllMembersModal" class="btn small">全選択</button>
+              <button id="clearAllMembersModal" class="btn small">全解除</button>
+            </div>
+            <button id="confirmMemberSelectionModal" class="btn small" style="background: var(--accent); color: white;">確定</button>
+          </div>
+
+          <!-- グループ別メンバー選択タブ -->
+          <div id="memberSelectionTabsModal" class="member-selection-tabs" style="margin-bottom: 12px;">
+            <!-- タブボタンが動的に追加される -->
+          </div>
+
+          <!-- メンバー選択リスト -->
+          <div id="memberSelectionListModal" class="member-selection-list">
+            <div id="memberSelectionLoadingModal" class="muted small">読み込み中...</div>
+          </div>
+
+          <!-- 選択状況表示 -->
+          <div id="memberSelectionStatusModal" class="small muted" style="margin-top: 8px;"></div>
+        </div>
       </div>
     </div>
 
